@@ -16,12 +16,15 @@
     "admin:create": "tsx scripts/create-admin.ts",
     "db:backup": "bash scripts/backup.sh",
     "test:db:prepare": "tsx scripts/prepare-test-db.ts",
-    "db:seed:demo": "tsx prisma/seed.ts --demo"
+    "db:seed:demo": "tsx prisma/seed.ts --demo",
+    "postinstall": "prisma generate",
+    "build:deploy": "prisma migrate deploy && tsx prisma/seed.ts && next build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.893.0",
     "@prisma/client": "6.19.3",
     "bcryptjs": "2.4.3",
     "jose": "5.10.0",

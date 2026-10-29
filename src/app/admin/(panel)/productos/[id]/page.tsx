@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/ActionForm";
+import { PhotoInput } from "@/components/PhotoInput";
 import { ProductFields } from "@/components/ProductFields";
 import { AvailabilityBadge, Badge, Card, Check, Field, Notice, PublicationBadge } from "@/components/ui";
 import { dateInputValue, daysSince, formatDate, formatDateTime } from "@/lib/format";
@@ -193,7 +194,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         <ActionForm action={uploadImagesAction}>
           <input type="hidden" name="id" value={p.id} />
           <div className="form-grid">
-            <Field label="Archivos *" hint="JPG, PNG, WEBP o HEIC. Máx. 12 MB c/u."><input type="file" name="files" multiple accept="image/*" required /></Field>
+            <Field label="Archivos *" hint="JPG, PNG o WEBP. Hasta 4 MB por envío (las fotos pesadas se reducen solas)."><PhotoInput name="files" required /></Field>
             <Field label="Fuente de la foto">
               <select name="sourceType" defaultValue="SUPPLIER">
                 <option value="SUPPLIER">Proporcionada por el proveedor</option>

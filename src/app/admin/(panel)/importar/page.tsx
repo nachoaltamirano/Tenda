@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/ActionForm";
+import { PhotoInput } from "@/components/PhotoInput";
 import { Badge, Card, Check, Field, Notice } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { DATA_SOURCE_LABELS } from "@/lib/validation/catalog";
@@ -57,9 +58,9 @@ export default async function ImportPage() {
               <Field
                 label="Fotos del mensaje"
                 wide
-                hint={'Opcional. Para asignarlas automáticamente, escribí el nombre del archivo en el mensaje (ej. "Foto: IMG-20261029-WA0012.jpg"). Las que no se mencionen se pueden asignar a mano al revisar. JPG, PNG o WEBP; hasta 40.'}
+                hint={'Opcional. Para asignarlas automáticamente, escribí el nombre del archivo en el mensaje (ej. "Foto: IMG-20261029-WA0012.jpg"). Las que no se mencionen se pueden asignar a mano al revisar. JPG, PNG o WEBP; hasta 40 y 4 MB por envío (las fotos pesadas se reducen solas).'}
               >
-                <input type="file" name="photos" multiple accept="image/jpeg,image/png,image/webp" />
+                <PhotoInput name="photos" />
               </Field>
             </div>
             <Check name="isTestData" label="Es un mensaje de prueba" />

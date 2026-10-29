@@ -11,6 +11,7 @@ stock propio, caja, tienda pública y contenido para redes.
 | [docs/IMPORTACION.md](docs/IMPORTACION.md) | Cómo cargar la información que llega por WhatsApp |
 | [docs/PRECIOS.md](docs/PRECIOS.md) | Fórmulas del motor de precios y datos necesarios |
 | [docs/PLAN.md](docs/PLAN.md) | Etapas, tareas y estado |
+| [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md) | Publicar en Vercel + Supabase y conectar un dominio |
 
 ## Requisitos
 
@@ -40,7 +41,10 @@ Opcional en desarrollo: `pnpm db:seed:demo` crea dos productos de demostración 
 | `DATABASE_URL` | Base de datos principal |
 | `TEST_DATABASE_URL` | Base exclusiva para pruebas. Las pruebas **vacían** esta base; nunca apuntarla a datos reales |
 | `SESSION_SECRET` | Firma de la cookie de sesión del panel (≥ 32 caracteres) |
-| `STORAGE_DRIVER` | `local` (único implementado por ahora) |
+| `DIRECT_URL` | Conexión directa para migraciones (local: igual a `DATABASE_URL`) |
+| `STORAGE_DRIVER` | `local` (carpeta) o `s3` (Supabase Storage; obligatorio en Vercel) |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Almacenamiento S3 |
+| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_INITIAL_PASSWORD` | Primer administrador al desplegar (si no hay ninguno) |
 | `STORAGE_LOCAL_DIR` | Carpeta de imágenes (por defecto `./storage`) |
 | `PUBLIC_SITE_URL` | URL pública de la tienda (enlaces de WhatsApp y SEO, etapa 4) |
 | `PUBLIC_WHATSAPP_NUMBER` | Número de WhatsApp Business (etapa 4) |

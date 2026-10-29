@@ -1,5 +1,6 @@
 // Semilla mínima: filas de configuración y proveedor principal. No crea productos.
 // Con --demo agrega productos de demostración marcados como datos de prueba.
+import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { productNameKey } from "../src/lib/text";
 
@@ -12,6 +13,15 @@ async function main() {
     await db.supplier.create({ data: { name: "Proveedor principal (nombre pendiente)", city: "Rosario", notes: "Ofertas de stock en depósito de Argentina publicadas en grupo de WhatsApp." } });
   }
   console.log("Configuración inicial lista.");
+
+  // Primer administrador al desplegar: solo si no hay ninguno. La contraseña inicial se cambia después.
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_INITIAL_PASSWORD;
+  if (email && password && (await db.adminUser.count()) === 0) {
+    if (password.length < 10) throw new Error("ADMIN_INITIAL_PASSWORD debe tener al menos 10 caracteres.");
+    await db.adminUser.create({ data: { email, name: process.env.ADMIN_NAME || email, passwordHash: await bcrypt.hash(password, 12) } });
+    console.log(`Administrador inicial creado: ${email}`);
+  }
 
   if (process.argv.includes("--demo")) {
     const supplier = await db.supplier.upsert({
