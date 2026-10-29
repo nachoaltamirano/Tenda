@@ -69,15 +69,15 @@ ejecutan en transacción. Así las mismas reglas valen para la interfaz, scripts
 | `AuditLog` | Historial de cambios de cualquier entidad (quién, cuándo, qué cambió, motivo) |
 | `Supplier` | Proveedores |
 | `SupplierMessage` | Texto original pegado desde WhatsApp, fuente, fecha de consulta, propuesta del intérprete y qué ítems se aplicaron |
-| `Product` | Producto general: SKU interno, SKU del proveedor, marca, modelo, costos vigentes, precio publicado, disponibilidad, publicación, fuente/fecha del dato, última consulta, próximo despacho |
-| `ProductVariant` | Color × talle, con disponibilidad y fecha de consulta propias. Única por (producto, color normalizado, talle) |
+| `Product` | Producto general: SKU interno, SKU del proveedor, marca, modelo, costos vigentes, precio publicado, **oferta** (talles ofrecidos, colores opcionales, nota de surtido), disponibilidad, publicación, fuente/fecha del dato, última consulta, próximo despacho |
 | `ProductImage` | Original + optimizada + miniatura, fuente, autorización, orden, portada |
 | `ProductCostHistory` | Cada costo confirmado, con fecha de consulta y mensaje de origen |
 | `PriceChangeProposal` | Cambio de costo pendiente: valores y fechas anterior/nuevo, impacto calculado, decisión |
 | `PricingSettings` | Costos generales, comisiones, impuestos, objetivo, margen mínimo, redondeo |
 | `DispatchSettings`, `Holiday` | Días de despacho (mar/jue/vie), plazo máximo (5 días), feriados |
 
-Estados de disponibilidad: `PENDING_VERIFICATION` (pendiente de verificar), `AVAILABLE_LAST_CHECK` (disponible según última consulta),
+No se registra disponibilidad por talle/color (decisión del 29/10/2026): el cliente consulta y LOBBY confirma con el proveedor;
+el talle y color concretos se guardan en el ítem del pedido. Estados de disponibilidad del producto: `PENDING_VERIFICATION` (pendiente de verificar), `AVAILABLE_LAST_CHECK` (disponible según última consulta),
 `CONFIRMED_FOR_ORDER` (confirmada para un pedido), `SOLD_OUT_CONFIRMED` (agotado confirmado), `DISCONTINUED`. Nunca se marca agotado por falta de información.
 
 ### Planificado (etapas 3–5)
@@ -86,7 +86,7 @@ Estados de disponibilidad: `PENDING_VERIFICATION` (pendiente de verificar), `AVA
 |---|---|---|
 | `Customer` | nombre, teléfono, canal de origen, notas | Solo los datos necesarios para entregar y contactar |
 | `Order` | código único (`LB-AAMM-0001`), cliente, canal, estado, método de entrega, fechas, notas internas, excepción de cierre con saldo (motivo + autorizante) | Estados 1–16 del flujo + `CANCELLED`, `RETURNED`, `INCIDENT` |
-| `OrderItem` | producto, variante, **copia** de marca/modelo/color/talle, **precio acordado**, **costo histórico** (copia + `costHistoryId`), gastos, ítem de stock si sale del stock propio | Nunca se recalcula desde el catálogo |
+| `OrderItem` | producto, **copia** de marca/modelo y del talle/color confirmados, **precio acordado**, **costo histórico** (copia + `costHistoryId`), gastos, ítem de stock si sale del stock propio | Nunca se recalcula desde el catálogo |
 | `OrderStatusChange` | de, a, fecha, usuario, nota | Transiciones validadas por una máquina de estados |
 | `Payment` | pedido, importe, método, fecha, referencia, `idempotencyKey` único | Evita registrar dos veces el mismo pago |
 | `Shipment` | fechas de consulta, confirmación del proveedor, despacho estimado/confirmado/real, llegada estimada/real, transporte, seguimiento | Estimado y confirmado en campos distintos |

@@ -47,8 +47,6 @@ export const baseProduct = {
   model: "Modelo Uno",
   costPrice: 4_500_000,
   isTestData: true,
-  variants: [
-    { color: "negro", size: "40" },
-    { color: "negro", size: "41" },
-  ],
+  sizesOffered: ["40", "41"],
+  colorsOffered: ["negro"],
 };

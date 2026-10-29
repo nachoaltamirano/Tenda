@@ -16,7 +16,7 @@ Leyenda: ✅ terminado y probado · 🟡 parcial · ⬜ pendiente
 | Tarea | Estado | Verificación |
 |---|---|---|
 | Motor de precios (costo total, sugerido con comisiones, margen, recargo, redondeo, faltantes) | ✅ | `tests/unit/pricing.test.ts` |
-| Alta/edición de productos con variantes color × talle | ✅ | `tests/integration/products.test.ts` |
+| Alta/edición de productos con oferta (talles, colores opcionales, surtido) | ✅ | `tests/integration/products.test.ts` |
 | Detección de duplicados (nombre normalizado, SKU proveedor, similitud) | ✅ | `matching.test.ts`, `products.test.ts` |
 | Historial de modificaciones de cada producto | ✅ | `products.test.ts` |
 | Intérprete de mensajes (etiquetado, una línea, ofertas de grupo, ambigüedades) | ✅ | `tests/unit/parser.test.ts` |
@@ -27,7 +27,7 @@ Leyenda: ✅ terminado y probado · 🟡 parcial · ⬜ pendiente
 | Reglas de publicación (datos completos, foto autorizada, margen) | ✅ | `products.test.ts` |
 | Panel: listado con filtros, ficha, precios pendientes, importación, configuración | ✅ | build + recorrido con Playwright |
 | Fotos subidas con el mensaje y asignadas por nombre de archivo (sin duplicados, autorización explícita) | ✅ | `import-photos.test.ts`, `parser.test.ts`, `photo-matching.test.ts` + navegador |
-| Ajustar el intérprete con mensajes reales del grupo | ⬜ | requiere ejemplos reales |
+| Ajustar el intérprete al formato real del grupo (emojis, precio suelto, surtido) | ✅ | `parser.test.ts` (1 mensaje real; sumar más) |
 | Importación de listas en archivo (CSV/Excel) | ⬜ | si el proveedor envía listas |
 | Comparación masiva de una lista completa contra el catálogo | ⬜ | hoy se revisa ítem por ítem |
 

@@ -29,6 +29,22 @@ export function ProductFields({ product, suppliers }: { product?: Product; suppl
       </fieldset>
 
       <fieldset>
+        <legend>Oferta del proveedor</legend>
+        <div className="form-grid">
+          <Field label="Talles ofrecidos *" hint="Separados por coma (40.5 para medio talle)">
+            <input name="sizesOffered" defaultValue={p?.sizesOffered.join(", ")} placeholder="38, 39, 40, 41, 42, 43" />
+          </Field>
+          <Field label="Colores" hint="Opcional. Separados por coma">
+            <input name="colorsOffered" defaultValue={p?.colorsOffered.join(", ")} />
+          </Field>
+          <Field label="Nota de surtido" hint="Ej.: Surtidas (sueltas a elección)">
+            <input name="assortmentNote" defaultValue={p?.assortmentNote ?? ""} />
+          </Field>
+        </div>
+        <p className="field-hint">La disponibilidad de cada par se confirma con el proveedor cuando un cliente consulta.</p>
+      </fieldset>
+
+      <fieldset>
         <legend>Costos adicionales y precio de venta</legend>
         <div className="form-grid">
           <Field label="Moneda">

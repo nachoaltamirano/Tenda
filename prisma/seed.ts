@@ -39,7 +39,8 @@ async function main() {
           lastConsultedAt: new Date(),
           isTestData: true,
           notes: "Producto de demostración. No es un producto real.",
-          variants: { create: d.sizes.map((size) => ({ color: d.color, colorKey: d.color, size })) },
+          sizesOffered: d.sizes,
+          colorsOffered: [d.color],
           costHistory: { create: { currency: "ARS", costPrice: d.cost, consultedAt: new Date(), source: "MANUAL", note: "Demo" } },
         },
       });

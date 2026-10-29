@@ -14,9 +14,11 @@ El proveedor publica en un **grupo de WhatsApp** ofertas de stock que está en u
 Por eso:
 
 - La fuente por defecto al importar es *Grupo de WhatsApp del proveedor*.
-- Los talles informados quedan como **"Disponible según última consulta"**, no como confirmados: una oferta del grupo es general
-  y puede agotarse. La confirmación para un pedido concreto se registra aparte (etapa 3).
-- Los talles que **no** figuran en un mensaje nuevo **no** se marcan como agotados.
+- El producto guarda la **oferta**: talles ofrecidos, colores (opcional) y nota de surtido ("Surtidas, sueltas a elección").
+  **No se lleva disponibilidad por talle o color**: el cliente consulta, LOBBY confirma con el proveedor y el par puntual
+  (talle y color) queda registrado en el pedido (etapa 3).
+- El producto queda como **"Disponible según última consulta"**. Un mensaje más reciente reemplaza los talles ofrecidos;
+  si no informa colores, se conservan los cargados.
 - La fecha de consulta queda visible en el listado y en la ficha; si pasa el umbral configurado (7 días por defecto), el costo se marca como desactualizado.
 
 ## Pasos
@@ -30,7 +32,6 @@ Por eso:
    - **advertencias** (rangos de talles expandidos, campos deducidos de texto sin etiqueta, precios sospechosos);
    - **productos parecidos** ya cargados.
 4. Corregir los campos, elegir *Crear producto nuevo* o *Actualizar producto existente* y aplicar.
-   - Con varios colores hay que confirmar que todos los talles existen en todos los colores (si no, cargarlos por separado).
    - Al crear, si hay un producto parecido, hay que confirmar que es distinto.
 5. Si el producto existía y el precio cambió, se crea una **propuesta** en *Precios pendientes*. Si el precio es el mismo, solo se renueva la fecha de consulta.
 
@@ -85,6 +86,9 @@ Listas de ofertas sin etiquetas (una línea por producto, **con `$`**):
 - Talles: listas (`39, 40 y 41`), rangos (`38 al 43`, `39-42`) y medios talles (`40.5`, `40½`). Los rangos se expanden a talles enteros con una advertencia.
 - Precios: `45000`, `45.000`, `$ 45.000,50`, `45k` (con advertencia), `USD 60`.
 - Despacho: día de la semana o fecha `dd/mm`. Siempre queda como **estimado** hasta confirmarlo.
+- Formato del grupo del proveedor (verificado con un mensaje real del 29/10/2026): etiquetas pegadas a emojis (`👣Talles: 38 al 43`),
+  precio en línea suelta (`💰$40.900 c/par`), `Surtidas (sueltas a elección)` → nota de surtido (no se inventan colores),
+  `Calidad …` → notas, `DEPOSITO #2` → origen del stock.
 - Marca: se separa del modelo si empieza con una marca conocida (Nike, Adidas, Puma, New Balance, Vans, Converse, etc.).
 - Encabezados como "OFERTAS", "STOCK", "LLEGÓ" y líneas sin precio se ignoran y se listan para revisarlas.
 

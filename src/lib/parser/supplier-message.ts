@@ -27,6 +27,8 @@ export type ParsedItem = {
   notes: string | null;
   /** Nombres de archivo de fotos mencionados en el texto, en el orden en que aparecen. */
   photos: string[];
+  /** "Surtidas (sueltas a elección)": el proveedor ofrece colores/modelos variados sin detallarlos. */
+  assortmentNote: string | null;
   /** Campos deducidos de texto libre (sin etiqueta "Campo:"): revisar con más cuidado. */
   inferred: FieldName[];
   missing: FieldName[];
@@ -260,14 +262,23 @@ export function extractFilenames(text: string): string[] {
   return out;
 }
 
+/** "c/par", "c/u", "x par", "cada par": indican precio unitario, no forman parte del modelo. */
+const UNIT_RE = /(?:\bc\/\s?(?:par|u)\b|\bx\s?par\b|\bpor\s+par\b|\bcada\s+(?:par|uno)\b)/gi;
+const ASSORTMENT_RE = /\b(surtid[oa]s?|sueltas?|a elecci[oó]n|combinad[oa]s|varios colores|colores varios)\b/i;
+const QUALITY_RE = /^calidad\b/i;
+
 function cleanValue(v: string): string {
   return v.trim().replace(/^[\s:=\-–]+/, "").replace(/[\s.,;]+$/, "").trim();
 }
 
+// Emojis (incluidas banderas), selectores de variante y uniones: separan datos en los mensajes de WhatsApp.
+const DECOR = "[\\p{Extended_Pictographic}\\u{1F1E6}-\\u{1F1FF}\\u{FE0F}\\u{200D}\\u{20E3}]";
+const DECOR_RE = new RegExp(DECOR, "gu");
+
 function stripDecorations(line: string): string {
   // Emojis, viñetas y símbolos decorativos al principio/fin.
   return line
-    .replace(/[\p{Extended_Pictographic}‍️]/gu, " ")
+    .replace(DECOR_RE, " ")
     .replace(/^[\s•*·\-–>]+/, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -278,32 +289,40 @@ function stripDecorations(line: string): string {
 // ---------------------------------------------------------------------------
 
 const KEY_PATTERN = Object.keys(KEY_ALIASES).sort((a, b) => b.length - a.length).join("|");
-const KEY_RE = new RegExp(`(?:^|[\\s.,;•*\\-])(${KEY_PATTERN})s?\\s*:`, "gi");
+const KEY_RE = new RegExp(`(?:^|[\\s.,;•*\\-]|${DECOR})(${KEY_PATTERN})s?\\s*:`, "giu");
 
 type KV = { field: FieldName; value: string };
 
-function extractKeyValues(text: string): { kvs: KV[]; leading: string } {
-  const plain = stripAccents(text);
-  const matches = [...plain.matchAll(KEY_RE)];
-  const kvs: KV[] = [];
-  if (matches.length === 0) return { kvs, leading: text };
-  const leading = text.slice(0, matches[0].index!);
-  for (let i = 0; i < matches.length; i++) {
-    const m = matches[i];
-    const start = m.index! + m[0].length;
-    const end = i + 1 < matches.length ? matches[i + 1].index! : text.length;
-    const key = m[1].toLowerCase();
-    const field = KEY_ALIASES[key] ?? KEY_ALIASES[key.replace(/s$/, "")];
-    if (!field) continue;
-    kvs.push({ field, value: cleanValue(text.slice(start, end)) });
-  }
-  return { kvs, leading: leading.trim() };
+type LineInfo = { raw: string; kvs: KV[]; loose: string | null };
+
+/**
+ * Analiza un bloque línea por línea. Cada etiqueta termina al final de su línea
+ * (o donde empieza la siguiente etiqueta de la misma línea). El texto sin etiqueta
+ * queda como "suelto" para clasificarlo aparte.
+ */
+function analyzeLines(block: string): LineInfo[] {
+  return block.split("\n").map((raw) => {
+    const plain = stripAccents(raw);
+    const matches = [...plain.matchAll(KEY_RE)];
+    if (matches.length === 0) return { raw, kvs: [], loose: raw.trim() || null };
+    const kvs: KV[] = [];
+    for (let i = 0; i < matches.length; i++) {
+      const m = matches[i];
+      const start = m.index! + m[0].length;
+      const end = i + 1 < matches.length ? matches[i + 1].index! : raw.length;
+      const key = m[1].toLowerCase();
+      const field = KEY_ALIASES[key] ?? KEY_ALIASES[key.replace(/s$/, "")];
+      if (field) kvs.push({ field, value: cleanValue(raw.slice(start, end)) });
+    }
+    const before = raw.slice(0, matches[0].index!).trim();
+    return { raw, kvs, loose: before || null };
+  });
 }
 
 function emptyItem(rawText: string): ParsedItem {
   return {
     rawText, brand: null, model: null, colors: [], sizes: [], price: null, currency: null,
-    supplierSku: null, dispatch: null, stockNote: null, notes: null, photos: [],
+    supplierSku: null, dispatch: null, stockNote: null, notes: null, photos: [], assortmentNote: null,
     inferred: [], missing: [], warnings: [], clarifications: [],
   };
 }
@@ -391,7 +410,7 @@ function parseFreeLine(line: string, item: ParsedItem) {
   } else if (pr.values.length > 1) {
     item.clarifications.push(`Hay más de un importe en "${line.trim()}": indicar cuál es el precio.`);
   }
-  text = text.replace(/\$\s*[\d.,]+(\s*(k|mil)\b)?/gi, " ");
+  text = text.replace(/\$\s*[\d.,]+(\s*(k|mil)\b)?/gi, " ").replace(UNIT_RE, " ");
 
   // Talles: rango o lista de números de 2 cifras al final del texto (ej. "38 al 43", "39 40 41").
   const sizeTail = text.match(/((?:del\s+)?\d{2}(?:[.,]5)?(?:\s*(?:al|a|-|–|,|y|\/|\s)\s*\d{2}(?:[.,]5)?)*)\s*$/i);
@@ -458,7 +477,6 @@ function finalize(item: ParsedItem): ParsedItem {
   }
   if (!item.model) item.missing.push("model");
   if (!item.brand) item.missing.push("brand");
-  if (item.colors.length === 0) item.missing.push("colors");
   if (item.sizes.length === 0) item.missing.push("sizes");
   if (item.price === null) item.missing.push("price");
   if (item.price !== null && item.currency !== "USD" && item.price < 500_000) {
@@ -472,6 +490,60 @@ function finalize(item: ParsedItem): ParsedItem {
     item.warnings.push("Algunos campos se dedujeron de texto sin etiqueta: revisarlos antes de guardar.");
   }
   return item;
+}
+
+/**
+ * Clasifica el texto sin etiqueta de un bloque etiquetado: fotos, precio ("💰$40.900 c/par"),
+ * surtido ("Surtidas (sueltas a elección)"), calidad, depósito de origen o nombre del modelo.
+ */
+function applyLooseLines(item: ParsedItem, looseLines: string[], result: ParseResult) {
+  const candidates: string[] = [];
+  for (const line of looseLines) {
+    for (const f of extractFilenames(line)) if (!item.photos.includes(f)) item.photos.push(f);
+    const segments = line
+      .replace(FILENAME_RE, " ")
+      .split(new RegExp(`${DECOR}+`, "u"))
+      .map((x) => x.replace(/^[\s•*·\-–>]+/, "").trim())
+      .filter(Boolean);
+    for (const seg of segments) {
+      if (QUALITY_RE.test(stripAccents(seg))) {
+        item.notes = item.notes ? `${item.notes}\n${seg}` : seg;
+      } else if (ASSORTMENT_RE.test(stripAccents(seg))) {
+        item.assortmentNote = item.assortmentNote ? `${item.assortmentNote}; ${seg}` : seg;
+      } else if (/\$\s*\d/.test(seg)) {
+        const pr = parsePrices(seg, true);
+        item.warnings.push(...pr.warnings);
+        if (pr.values.length !== 1) {
+          item.clarifications.push(`Hay más de un importe en "${seg}": indicar cuál es el precio.`);
+        } else if (item.price === null) {
+          item.price = pr.values[0];
+          item.currency = pr.currency ?? "ARS";
+          item.inferred.push("price");
+        } else if (item.price !== pr.values[0]) {
+          item.clarifications.push(`El precio etiquetado y "${seg}" no coinciden.`);
+        }
+        const rest = stripDecorations(seg.replace(/\$\s*[\d.,]+(\s*(k|mil)\b)?/gi, " ").replace(UNIT_RE, " "));
+        if (rest) candidates.push(rest);
+      } else if (isHeaderLine(seg)) {
+        if (/dep[oó]sito/i.test(seg)) item.stockNote = item.stockNote ? `${item.stockNote}; ${seg}` : seg;
+        else result.ignoredLines.push(seg);
+      } else {
+        candidates.push(seg);
+      }
+    }
+  }
+  if (!item.model && candidates.length === 1) {
+    // Ej.: "Nike Air Force 1 blancas" sobre "Talles: 38 al 43".
+    const free = emptyItem(candidates[0]);
+    parseFreeLine(candidates[0], free);
+    item.model = free.model;
+    item.brand ??= free.brand;
+    if (!item.colors.length && free.colors.length) item.colors = free.colors;
+    if (!item.sizes.length && free.sizes.length) item.sizes = free.sizes;
+    item.inferred.push(...free.inferred.filter((f) => f !== "price" && !item.inferred.includes(f)));
+  } else if (candidates.length > 1 || (item.model && candidates.length)) {
+    item.clarifications.push(`Texto sin etiqueta para revisar: ${candidates.map((c) => `"${c}"`).join(", ")}.`);
+  }
 }
 
 /**
@@ -490,42 +562,27 @@ export function parseSupplierMessage(rawText: string, consultedAt: Date = new Da
 
   const blocks = text.split(/\n\s*\n+/).map((b) => b.trim()).filter(Boolean);
   for (const block of blocks) {
-    const { kvs, leading } = extractKeyValues(block);
-    if (kvs.length > 0) {
+    const analyzed = analyzeLines(block);
+    if (analyzed.some((l) => l.kvs.length > 0)) {
       // Bloque etiquetado. Una repetición de "Modelo:" abre un producto nuevo.
-      const groups: KV[][] = [[]];
-      for (const kv of kvs) {
-        const current = groups[groups.length - 1];
-        if (kv.field === "model" && current.some((k) => k.field === "model")) groups.push([kv]);
-        else current.push(kv);
-      }
-      const leadingLines = leading.split("\n").map((l) => l.trim()).filter(Boolean);
-      for (const [gi, group] of groups.entries()) {
-        const item = emptyItem(gi === 0 ? block : group.map((k) => `${k.field}: ${k.value}`).join("\n"));
-        for (const kv of group) applyKV(item, kv, consultedAt);
-        if (gi === 0 && leadingLines.length) {
-          for (const l of leadingLines) for (const f of extractFilenames(l)) if (!item.photos.includes(f)) item.photos.push(f);
-          const candidates = leadingLines
-            .map((l) => l.replace(FILENAME_RE, " ").trim())
-            .filter((l) => l && !isHeaderLine(l));
-          result.ignoredLines.push(...leadingLines.filter((l) => isHeaderLine(l)));
-          if (!item.model && candidates.length === 1) {
-            // Ej.: "Nike Air Force 1 blancas" sobre "Talles: 38 al 43".
-            const free = emptyItem(candidates[0]);
-            parseFreeLine(candidates[0], free);
-            item.model = free.model;
-            item.brand ??= free.brand;
-            if (!item.colors.length && free.colors.length) item.colors = free.colors;
-            if (!item.sizes.length && free.sizes.length) item.sizes = free.sizes;
-            if (item.price === null && free.price !== null) {
-              item.price = free.price;
-              item.currency = free.currency;
-            }
-            item.inferred.push(...free.inferred.filter((f) => !item.inferred.includes(f)));
-          } else if (candidates.length > 1) {
-            item.clarifications.push(`Texto sin etiqueta que podría ser el modelo: ${candidates.map((c) => `"${c}"`).join(", ")}.`);
+      type Group = { raw: string[]; kvs: KV[]; loose: string[] };
+      const groups: Group[] = [{ raw: [], kvs: [], loose: [] }];
+      for (const line of analyzed) {
+        let current = groups[groups.length - 1];
+        if (line.loose) current.loose.push(line.loose);
+        for (const kv of line.kvs) {
+          if (kv.field === "model" && current.kvs.some((k) => k.field === "model")) {
+            current = { raw: [], kvs: [], loose: [] };
+            groups.push(current);
           }
+          current.kvs.push(kv);
         }
+        current.raw.push(line.raw);
+      }
+      for (const group of groups) {
+        const item = emptyItem(group.raw.join("\n").trim());
+        for (const kv of group.kvs) applyKV(item, kv, consultedAt);
+        applyLooseLines(item, group.loose, result);
         result.items.push(finalize(item));
       }
       continue;

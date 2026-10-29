@@ -30,7 +30,7 @@ describe("intérprete de mensajes del proveedor", () => {
     expect(it0.model).toBe("Air Max 90");
     expect(it0.price).toBeNull();
     expect(it0.colors).toEqual([]);
-    expect(it0.missing).toEqual(expect.arrayContaining(["price", "colors"]));
+    expect(it0.missing).toEqual(["price"]); // el color es opcional: se consulta con el proveedor
   });
 
   it("pide aclaración si hay dos precios", () => {
@@ -87,6 +87,36 @@ describe("intérprete de mensajes del proveedor", () => {
     const r = parseSupplierMessage("Buen día! Mañana paso lista", consultedAt);
     expect(r.items).toHaveLength(0);
     expect(r.warnings.join(" ")).toMatch(/No se identificó/);
+  });
+});
+
+describe("formato real del grupo del proveedor", () => {
+  // Estructura de un mensaje real (29/10/2026); el nombre del modelo se reemplazó por uno genérico.
+  const real = "DEPOSITO #2🚚🇦🇷\nModelo Urbano X✅Calidad G-5💎\n👣Talles: 38 al 43\n✅Surtidas (sueltas a elección)\n💰$40.900 c/par";
+
+  it("reconoce talles pegados a emojis, precio suelto, surtido, calidad y depósito", () => {
+    const r = parseSupplierMessage(real, consultedAt);
+    expect(r.items).toHaveLength(1);
+    const it0 = r.items[0];
+    expect(it0.model).toBe("Modelo Urbano X");
+    expect(it0.sizes).toEqual(["38", "39", "40", "41", "42", "43"]);
+    expect(it0.price).toBe(4_090_000);
+    expect(it0.assortmentNote).toBe("Surtidas (sueltas a elección)");
+    expect(it0.notes).toBe("Calidad G-5");
+    expect(it0.stockNote).toBe("DEPOSITO #2");
+    expect(it0.colors).toEqual([]); // "surtidas" no se traduce en colores inventados
+    expect(it0.clarifications).toEqual([]);
+    expect(it0.missing).toEqual(["brand"]);
+  });
+
+  it("el precio con c/par también en listas sin etiquetas", () => {
+    const it0 = parseSupplierMessage("• Puma Suede negro 40 41 $50.000 c/par", consultedAt).items[0];
+    expect(it0).toMatchObject({ brand: "Puma", model: "Suede", price: 5_000_000, colors: ["negro"] });
+  });
+
+  it("el formato de una línea sigue funcionando", () => {
+    const it0 = parseSupplierMessage("Modelo: X. Color: negro. Talles: 39 y 40. Precio: 45000. Despacho: jueves.", consultedAt).items[0];
+    expect(it0).toMatchObject({ model: "X", colors: ["negro"], sizes: ["39", "40"], price: 4_500_000 });
   });
 });
 

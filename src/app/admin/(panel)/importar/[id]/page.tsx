@@ -115,14 +115,15 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
                   <Field label="Marca *"><input name="brand" defaultValue={item.brand ?? ""} required /></Field>
                   <Field label="Modelo *"><input name="model" defaultValue={item.model ?? ""} required /></Field>
                   <Field label="SKU del proveedor"><input name="supplierSku" defaultValue={item.supplierSku ?? ""} /></Field>
-                  <Field label="Colores *" hint="Separados por coma"><input name="colors" defaultValue={item.colors.join(", ")} /></Field>
-                  <Field label="Talles *" hint="Separados por coma"><input name="sizes" defaultValue={item.sizes.join(", ")} /></Field>
+                  <Field label="Talles ofrecidos *" hint="Separados por coma"><input name="sizes" defaultValue={item.sizes.join(", ")} /></Field>
+                  <Field label="Colores" hint="Opcional"><input name="colors" defaultValue={item.colors.join(", ")} /></Field>
+                  <Field label="Nota de surtido"><input name="assortmentNote" defaultValue={item.assortmentNote ?? ""} /></Field>
                   <Field label="Costo del proveedor" hint="Vacío si no se informó"><input name="price" inputMode="decimal" defaultValue={moneyInputValue(item.price)} /></Field>
                   <Field label="Moneda">
                     <select name="currency" defaultValue={item.currency ?? "ARS"}><option value="ARS">ARS</option><option value="USD">USD</option></select>
                   </Field>
-                  <Field label="Estado de los talles informados">
-                    <select name="variantStatus" defaultValue="AVAILABLE_LAST_CHECK">
+                  <Field label="Disponibilidad">
+                    <select name="availabilityStatus" defaultValue="AVAILABLE_LAST_CHECK">
                       {Object.entries(AVAILABILITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </Field>
@@ -161,7 +162,6 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
                   </fieldset>
                 )}
                 {item.price !== null && <p className="field-hint">Precio detectado: {formatMoney(item.price, item.currency ?? "ARS")}. Si el producto ya existe con otro costo, se crea una propuesta para aprobar.</p>}
-                <Check name="confirmAllCombinations" label="Con varios colores: confirmo que todos los talles existen en todos los colores" />
                 <Check name="confirmDuplicate" label="Al crear: confirmo que es un producto distinto de los parecidos" />
                 <div className="actions"><SubmitButton>Aplicar este producto</SubmitButton></div>
               </ActionForm>

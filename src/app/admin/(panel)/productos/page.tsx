@@ -67,7 +67,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                     <br /><small>{p.internalSku}{p.supplierSku ? ` · prov. ${p.supplierSku}` : ""}</small>
                     {p.isTestData && <> <Badge>prueba</Badge></>}
                   </td>
-                  <td><small>{p.sizes.join(", ") || "—"}<br />{p.colors.join(", ")}</small></td>
+                  <td><small>{p.sizesOffered.join(", ") || "—"}<br />{p.colorsOffered.join(", ") || p.assortmentNote}</small></td>
                   <td><AvailabilityBadge status={p.availabilityStatus} /></td>
                   <td className="num">{formatMoney(p.costPrice, p.currency)}</td>
                   <td className="num">{formatMoney(p.salePrice, p.currency)}</td>

@@ -175,6 +175,12 @@ model Product {
   salePrice          Int?
   salePriceUpdatedAt DateTime?
 
+  // Oferta informada por el proveedor. La disponibilidad puntual de cada par
+  // se confirma con el proveedor cuando un cliente consulta.
+  sizesOffered   String[] @default([]) // "38".."43", "40.5"
+  colorsOffered  String[] @default([]) // vacío = no informado / surtido
+  assortmentNote String? // "Surtidas (sueltas a elección)"
+
   availabilityStatus    AvailabilityStatus @default(PENDING_VERIFICATION)
   publicationStatus     PublicationStatus  @default(DRAFT)
   estimatedDeliveryDays Int? // null = usar el plazo general configurado
@@ -196,7 +202,6 @@ model Product {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  variants       ProductVariant[]
   images         ProductImage[]
   costHistory    ProductCostHistory[]
   priceProposals PriceChangeProposal[]
@@ -204,23 +209,6 @@ model Product {
   @@index([nameKey])
   @@index([supplierId, supplierSku])
   @@index([publicationStatus])
-}
-
-model ProductVariant {
-  id                 String             @id @default(cuid())
-  productId          String
-  product            Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
-  color              String
-  colorKey           String // normalizado
-  size               String // "40", "40.5"
-  supplierSku        String?
-  availabilityStatus AvailabilityStatus @default(PENDING_VERIFICATION)
-  lastConsultedAt    DateTime?
-  active             Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-
-  @@unique([productId, colorKey, size])
 }
 
 enum ImageSourceType {

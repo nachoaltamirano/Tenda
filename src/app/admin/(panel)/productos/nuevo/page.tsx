@@ -1,7 +1,6 @@
 import { ActionForm, SubmitButton } from "@/components/ActionForm";
 import { ProductFields } from "@/components/ProductFields";
 import { Card, Check, Field } from "@/components/ui";
-import { AVAILABILITY_LABELS } from "@/lib/validation/catalog";
 import { db } from "@/server/db";
 import { createProductAction } from "../../../actions";
 
@@ -21,19 +20,6 @@ export default async function NewProductPage() {
                 <input name="costPrice" inputMode="decimal" />
               </Field>
             </div>
-          </fieldset>
-          <fieldset>
-            <legend>Talles y colores</legend>
-            <div className="form-grid">
-              <Field label="Colores" hint="Separados por coma"><input name="colors" placeholder="negro, blanco" /></Field>
-              <Field label="Talles" hint="Separados por coma (40.5 para medio talle)"><input name="sizes" placeholder="39, 40, 41, 42" /></Field>
-              <Field label="Estado de las variantes">
-                <select name="variantStatus" defaultValue="PENDING_VERIFICATION">
-                  {Object.entries(AVAILABILITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </Field>
-            </div>
-            <Check name="confirmAllCombinations" label="Con varios colores: confirmo que todos los talles existen en todos los colores" />
           </fieldset>
           <ProductFields suppliers={suppliers} />
           <Check name="confirmDuplicate" label="Si el sistema detecta un posible duplicado, confirmo que es un producto distinto" />

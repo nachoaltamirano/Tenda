@@ -29,9 +29,9 @@ describe("importación asistida", () => {
       { messageId: m.id, itemIndex: 0, action: "create", brand: "[TEST] Nike", model: "Air Max 90", colors: ["negro"], sizes: ["40", "41"], price: 4_500_000, nextDispatchWeekday: 4 },
       actor,
     );
-    const p = await db.product.findUniqueOrThrow({ where: { id: r.productId }, include: { variants: true, costHistory: true } });
+    const p = await db.product.findUniqueOrThrow({ where: { id: r.productId }, include: { costHistory: true } });
     expect(p).toMatchObject({ costPrice: 4_500_000, dataSource: "WHATSAPP_GROUP", lastConsultedAt: consultedAt, nextDispatchWeekday: 4, nextDispatchConfirmed: false, isTestData: true });
-    expect(p.variants.map((v) => v.availabilityStatus)).toEqual(["AVAILABLE_LAST_CHECK", "AVAILABLE_LAST_CHECK"]);
+    expect(p).toMatchObject({ sizesOffered: ["40", "41"], colorsOffered: ["negro"], availabilityStatus: "AVAILABLE_LAST_CHECK" });
     expect(p.costHistory[0].supplierMessageId).toBe(m.id);
     expect((await db.supplierMessage.findUniqueOrThrow({ where: { id: m.id } })).status).toBe("APPLIED");
     // No se puede aplicar dos veces el mismo ítem.
@@ -52,19 +52,33 @@ describe("importación asistida", () => {
       actor,
     );
     expect(r.priceOutcome).toBe("proposal");
-    const p = await db.product.findUniqueOrThrow({ where: { id: productId }, include: { variants: { orderBy: { size: "asc" } } } });
+    const p = await db.product.findUniqueOrThrow({ where: { id: productId } });
     expect(p.costPrice).toBe(5_500_000);
     expect(p.lastConsultedAt).toEqual(consultedAt);
-    // El talle nuevo se agrega y los anteriores siguen activos (no se asumen agotados).
-    expect(p.variants.map((v) => [v.size, v.active])).toEqual([["40", true], ["41", true], ["42", true]]);
+    // La oferta más reciente reemplaza a la anterior.
+    expect(p.sizesOffered).toEqual(["42"]);
     expect((await db.supplierMessage.findUniqueOrThrow({ where: { id: m1.id } })).status).toBe("PARTIALLY_APPLIED");
   });
 
-  it("exige confirmar combinaciones cuando hay varios colores", async () => {
+  it("acepta ofertas surtidas sin color y conserva los colores cargados si un mensaje nuevo no los informa", async () => {
+    const m1 = await createSupplierMessage({ supplierId, source: "WHATSAPP_GROUP", rawText: "x $1", consultedAt: new Date("2026-10-20"), isTestData: true }, actor);
+    const { productId } = await applyReviewedItem(
+      { messageId: m1.id, itemIndex: 0, action: "create", brand: "[TEST] A", model: "B", colors: ["negro", "blanco"], sizes: ["40", "41"], price: 4_000_000 },
+      actor,
+    );
+    const m2 = await createSupplierMessage({ supplierId, source: "WHATSAPP_GROUP", rawText: "x $1", consultedAt, isTestData: true }, actor);
+    await applyReviewedItem(
+      { messageId: m2.id, itemIndex: 0, action: "update", productId, brand: "[TEST] A", model: "B", colors: [], assortmentNote: "Surtidas (sueltas a elección)", sizes: ["38", "39", "40"], price: 4_000_000 },
+      actor,
+    );
+    const p = await db.product.findUniqueOrThrow({ where: { id: productId } });
+    expect(p).toMatchObject({ sizesOffered: ["38", "39", "40"], colorsOffered: ["negro", "blanco"], assortmentNote: "Surtidas (sueltas a elección)" });
+  });
+
+  it("exige al menos un talle", async () => {
     const m = await createSupplierMessage({ supplierId, source: "WHATSAPP_GROUP", rawText: "x $1", consultedAt, isTestData: true }, actor);
-    const item = { messageId: m.id, itemIndex: 0, action: "create" as const, brand: "[TEST] A", model: "B", colors: ["negro", "blanco"], sizes: ["40"], price: 100_000_00 };
-    await expect(applyReviewedItem(item, actor)).rejects.toMatchObject({ code: "combinations" });
-    await applyReviewedItem({ ...item, confirmAllCombinations: true }, actor);
-    expect(await db.productVariant.count()).toBe(2);
+    await expect(
+      applyReviewedItem({ messageId: m.id, itemIndex: 0, action: "create", brand: "[TEST] A", model: "B", colors: [], sizes: [], price: null }, actor),
+    ).rejects.toThrow(/talles/);
   });
 });

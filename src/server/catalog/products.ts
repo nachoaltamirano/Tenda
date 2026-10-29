@@ -7,10 +7,8 @@ import { normalizeKey, productNameKey, slugify } from "@/lib/text";
 import {
   productCreateInput,
   productUpdateInput,
-  variantInput,
   type ProductCreateInput,
   type ProductUpdateInput,
-  type VariantInput,
 } from "@/lib/validation/catalog";
 import { audit, diff } from "../audit";
 import { db, type Tx } from "../db";
@@ -96,50 +94,6 @@ async function assertSalePriceAcceptable(
 }
 
 // ---------------------------------------------------------------------------
-// Variantes
-// ---------------------------------------------------------------------------
-
-/**
- * Sincroniza variantes. Las que ya no figuran se desactivan (no se borran ni
- * se marcan como agotadas: la falta de información no implica agotado).
- */
-export async function syncVariants(tx: Tx, productId: string, variants: VariantInput[], consultedAt: Date | null, deactivateMissing = true) {
-  const seen = new Set<string>();
-  for (const raw of variants) {
-    const v = variantInput.parse(raw);
-    const colorKey = normalizeKey(v.color);
-    const key = `${colorKey}|${v.size}`;
-    if (seen.has(key)) throw new BusinessError(`Variante repetida: ${v.color} talle ${v.size}.`);
-    seen.add(key);
-    await tx.productVariant.upsert({
-      where: { productId_colorKey_size: { productId, colorKey, size: v.size } },
-      create: {
-        productId,
-        color: v.color,
-        colorKey,
-        size: v.size,
-        supplierSku: v.supplierSku,
-        availabilityStatus: v.availabilityStatus,
-        lastConsultedAt: consultedAt,
-      },
-      update: {
-        color: v.color,
-        supplierSku: v.supplierSku ?? undefined,
-        availabilityStatus: v.availabilityStatus,
-        active: true,
-        ...(consultedAt ? { lastConsultedAt: consultedAt } : {}),
-      },
-    });
-  }
-  if (deactivateMissing) {
-    const existing = await tx.productVariant.findMany({ where: { productId, active: true } });
-    for (const v of existing) {
-      if (!seen.has(`${v.colorKey}|${v.size}`)) await tx.productVariant.update({ where: { id: v.id }, data: { active: false } });
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Alta y edición
 // ---------------------------------------------------------------------------
 
@@ -175,6 +129,9 @@ export async function createProduct(rawInput: ProductCreateInput, actor: Actor, 
         costUpdatedAt: input.costPrice !== null ? consulted ?? new Date() : null,
         salePrice: input.salePrice,
         salePriceUpdatedAt: input.salePrice !== null ? new Date() : null,
+        sizesOffered: input.sizesOffered,
+        colorsOffered: input.colorsOffered,
+        assortmentNote: input.assortmentNote,
         availabilityStatus: input.availabilityStatus,
         estimatedDeliveryDays: input.estimatedDeliveryDays,
         dataSource: input.dataSource,
@@ -205,12 +162,11 @@ export async function createProduct(rawInput: ProductCreateInput, actor: Actor, 
         },
       });
     }
-    await syncVariants(tx, product.id, input.variants, input.lastConsultedAt);
     await audit(tx, {
       entityType: "Product",
       entityId: product.id,
       action: "create",
-      changes: { brand: input.brand, model: input.model, costPrice: input.costPrice, salePrice: input.salePrice, variants: input.variants.length },
+      changes: { brand: input.brand, model: input.model, costPrice: input.costPrice, salePrice: input.salePrice, sizesOffered: input.sizesOffered, colorsOffered: input.colorsOffered },
       reason: dups.length ? "Alta confirmada pese a posible duplicado" : undefined,
       userEmail: actor.email,
     });
@@ -221,7 +177,7 @@ export async function createProduct(rawInput: ProductCreateInput, actor: Actor, 
 
 const EDITABLE_FIELDS = [
   "supplierId", "supplierSku", "brand", "model", "description", "category", "currency", "transportCost", "otherCosts",
-  "accessoriesCost", "salePrice", "availabilityStatus", "estimatedDeliveryDays", "dataSource", "dataDate", "dataVerified",
+  "accessoriesCost", "salePrice", "sizesOffered", "colorsOffered", "assortmentNote", "availabilityStatus", "estimatedDeliveryDays", "dataSource", "dataDate", "dataVerified",
   "lastConsultedAt", "nextDispatchDate", "nextDispatchWeekday", "nextDispatchMode", "nextDispatchConfirmed", "notes",
   "conditions", "isTestData",
 ] as const;
@@ -258,22 +214,6 @@ export async function updateProduct(id: string, rawInput: ProductUpdateInput, ac
   });
 }
 
-export async function updateVariants(productId: string, variants: VariantInput[], actor: Actor, consultedAt: Date | null) {
-  return db.$transaction(async (tx) => {
-    const before = await tx.productVariant.findMany({ where: { productId, active: true }, orderBy: [{ color: "asc" }, { size: "asc" }] });
-    await syncVariants(tx, productId, variants, consultedAt);
-    const after = await tx.productVariant.findMany({ where: { productId, active: true }, orderBy: [{ color: "asc" }, { size: "asc" }] });
-    const fmt = (vs: typeof before) => vs.map((v) => `${v.color} ${v.size} (${v.availabilityStatus})`);
-    await audit(tx, {
-      entityType: "Product",
-      entityId: productId,
-      action: "variants_update",
-      changes: { variants: { from: fmt(before), to: fmt(after) } },
-      userEmail: actor.email,
-    });
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Publicación
 // ---------------------------------------------------------------------------
@@ -281,10 +221,7 @@ export async function updateVariants(productId: string, variants: VariantInput[]
 export async function getPublicationIssues(id: string, tx: Tx = db): Promise<string[]> {
   const p = await tx.product.findUnique({
     where: { id },
-    include: {
-      variants: { where: { active: true } },
-      images: { where: { deletedAt: null, authorizedForPublication: true } },
-    },
+    include: { images: { where: { deletedAt: null, authorizedForPublication: true } } },
   });
   if (!p) throw new BusinessError("El producto no existe.", "not_found");
   const a = await analyzeProductPricing(p, tx);
@@ -293,7 +230,7 @@ export async function getPublicationIssues(id: string, tx: Tx = db): Promise<str
     salePrice: p.salePrice,
     availabilityStatus: p.availabilityStatus,
     description: p.description,
-    activeVariants: p.variants.length,
+    sizesOffered: p.sizesOffered.length,
     publishableImages: p.images.length,
     belowMinMargin: a.publishedBelowMinMargin,
     profit: a.published?.profit ?? null,
@@ -353,7 +290,6 @@ export async function listProducts(filters: ProductFilters = {}) {
     where,
     orderBy: { updatedAt: "desc" },
     include: {
-      variants: { where: { active: true }, select: { color: true, size: true, availabilityStatus: true } },
       images: { where: { deletedAt: null, isCover: true }, take: 1 },
       _count: { select: { priceProposals: { where: { status: "PENDING" } } } },
     },
@@ -366,8 +302,6 @@ export async function listProducts(filters: ProductFilters = {}) {
       ...p,
       analysis: a,
       isStale: !p.costUpdatedAt || p.costUpdatedAt < staleBefore,
-      colors: [...new Set(p.variants.map((v) => v.color))],
-      sizes: [...new Set(p.variants.map((v) => v.size))].sort((x, y) => Number(x) - Number(y)),
     };
   });
 }
@@ -377,7 +311,6 @@ export async function getProductDetail(id: string) {
     where: { id },
     include: {
       supplier: true,
-      variants: { orderBy: [{ active: "desc" }, { color: "asc" }, { size: "asc" }] },
       images: { where: { deletedAt: null }, orderBy: { position: "asc" } },
       costHistory: { orderBy: { consultedAt: "desc" }, take: 50 },
       priceProposals: { orderBy: { createdAt: "desc" }, take: 20 },
@@ -392,59 +325,4 @@ export async function getProductDetail(id: string) {
   const analysis = await analyzeProductPricing(product);
   const publicationBlockers = await getPublicationIssues(id);
   return { product, history, analysis, publicationBlockers };
-}
-
-export async function addVariants(
-  productId: string,
-  input: { color: string; sizes: string[]; availabilityStatus: VariantInput["availabilityStatus"]; consultedAt: Date | null },
-  actor: Actor,
-) {
-  if (!input.sizes.length) throw new BusinessError("Indicá al menos un talle.");
-  return db.$transaction(async (tx) => {
-    const p = await tx.product.findUnique({ where: { id: productId } });
-    if (!p) throw new BusinessError("El producto no existe.", "not_found");
-    await syncVariants(
-      tx,
-      productId,
-      input.sizes.map((size) => ({ color: input.color, size, availabilityStatus: input.availabilityStatus })),
-      input.consultedAt,
-      false,
-    );
-    await audit(tx, {
-      entityType: "Product",
-      entityId: productId,
-      action: "variants_added",
-      changes: { color: input.color, sizes: input.sizes, status: input.availabilityStatus },
-      userEmail: actor.email,
-    });
-  });
-}
-
-export async function setVariantState(
-  productId: string,
-  variantId: string,
-  data: { availabilityStatus?: VariantInput["availabilityStatus"]; active?: boolean; consultedAt?: Date | null },
-  actor: Actor,
-) {
-  return db.$transaction(async (tx) => {
-    const v = await tx.productVariant.findFirst({ where: { id: variantId, productId } });
-    if (!v) throw new BusinessError("La variante no existe.", "not_found");
-    const update = {
-      ...(data.availabilityStatus ? { availabilityStatus: data.availabilityStatus } : {}),
-      ...(data.active !== undefined ? { active: data.active } : {}),
-      ...(data.consultedAt ? { lastConsultedAt: data.consultedAt } : {}),
-    };
-    await tx.productVariant.update({ where: { id: variantId }, data: update });
-    await audit(tx, {
-      entityType: "Product",
-      entityId: productId,
-      action: "variant_update",
-      changes: {
-        variant: `${v.color} ${v.size}`,
-        ...(data.availabilityStatus ? { availabilityStatus: { from: v.availabilityStatus, to: data.availabilityStatus } } : {}),
-        ...(data.active !== undefined ? { active: { from: v.active, to: data.active } } : {}),
-      },
-      userEmail: actor.email,
-    });
-  });
 }

@@ -39,16 +39,23 @@ export const DATA_SOURCE_LABELS: Record<(typeof dataSourceValues)[number], strin
 };
 export const PUBLICATION_LABELS = { DRAFT: "Borrador", PUBLISHED: "Publicado", PAUSED: "Pausado" } as const;
 
-export const variantInput = z.object({
-  color: z.string().trim().min(1, "Color requerido").max(60),
-  size: z
-    .string()
-    .trim()
-    .regex(/^\d{2}(\.5)?$/, "Talle inválido (ej: 40 o 40.5)"),
-  supplierSku: optText(60),
-  availabilityStatus: z.enum(availabilityValues).default("PENDING_VERIFICATION"),
-});
-export type VariantInput = z.input<typeof variantInput>;
+const sizeValue = z
+  .string()
+  .trim()
+  .regex(/^\d{2}(\.5)?$/, "Talle inválido (ej: 40 o 40.5)");
+
+/** Talles sin repetir y ordenados. */
+const sizeList = z
+  .array(sizeValue)
+  .max(40)
+  .default([])
+  .transform((v) => [...new Set(v)].sort((a, b) => Number(a) - Number(b)));
+
+const colorList = z
+  .array(z.string().trim().min(1).max(60))
+  .max(20)
+  .default([])
+  .transform((v) => v.filter((c, i) => v.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i));
 
 const productBase = {
   supplierId: z.string().nullable().optional().transform((v) => v || null),
@@ -62,6 +69,9 @@ const productBase = {
   otherCosts: optCents,
   accessoriesCost: optCents,
   salePrice: optCents,
+  sizesOffered: sizeList,
+  colorsOffered: colorList,
+  assortmentNote: optText(200),
   availabilityStatus: z.enum(availabilityValues).default("PENDING_VERIFICATION"),
   estimatedDeliveryDays: z.number().int().min(0).max(90).nullable().optional().transform((v) => v ?? null),
   dataSource: z.enum(dataSourceValues).default("MANUAL"),
@@ -80,7 +90,6 @@ const productBase = {
 export const productCreateInput = z.object({
   ...productBase,
   costPrice: optCents,
-  variants: z.array(variantInput).max(200).default([]),
   /** Confirmación explícita cuando el sistema detecta un posible duplicado. */
   confirmDuplicate: z.boolean().default(false),
   acceptLowMargin: z.boolean().default(false),
@@ -134,18 +143,17 @@ export const reviewedItemInput = z.object({
   brand: z.string().trim().min(1, "La marca es obligatoria").max(60),
   model: z.string().trim().min(1, "El modelo es obligatorio").max(120),
   supplierSku: optText(60),
-  colors: z.array(z.string().trim().min(1).max(60)).max(20),
-  sizes: z.array(z.string().trim().regex(/^\d{2}(\.5)?$/, "Talle inválido")).max(40),
+  colors: colorList,
+  sizes: sizeList,
+  assortmentNote: optText(200),
   price: optCents,
   currency: z.enum(["ARS", "USD"]).default("ARS"),
-  /** Estado que se asigna a las variantes informadas en el mensaje. */
-  variantStatus: z.enum(availabilityValues).default("AVAILABLE_LAST_CHECK"),
+  /** Estado del producto según el mensaje (una oferta del grupo no confirma un par puntual). */
+  availabilityStatus: z.enum(availabilityValues).default("AVAILABLE_LAST_CHECK"),
   nextDispatchWeekday: z.number().int().min(0).max(6).nullable().optional().transform((v) => v ?? null),
   nextDispatchDate: optDate,
   notes: optText(2000),
   confirmDuplicate: z.boolean().default(false),
-  /** Con más de un color, confirmar que todos los talles existen en todos los colores. */
-  confirmAllCombinations: z.boolean().default(false),
   /** Fotos del mensaje a vincular, en orden (la primera es portada si el producto no tiene). */
   attachmentIds: z.array(z.string().min(1)).max(30).default([]),
   /** Declaración del administrador: las fotos están autorizadas para publicarse. */

@@ -5,7 +5,6 @@ import {
   getPublicationIssues,
   setPublicationStatus,
   updateProduct,
-  updateVariants,
 } from "@/server/catalog/products";
 import { actor, baseProduct, resetDb, seedPricing } from "./helpers";
 
@@ -15,13 +14,13 @@ beforeEach(async () => {
 });
 
 describe("alta de productos", () => {
-  it("crea producto, variantes, costo inicial e historial", async () => {
+  it("crea producto con talles ofrecidos, costo inicial e historial", async () => {
     const p = await createProduct({ ...baseProduct, lastConsultedAt: new Date("2026-10-27") }, actor);
     expect(p.internalSku).toMatch(/^LB-TES-[A-Z0-9]{4}$/);
     expect(p.slug).toBe("test-marca-modelo-uno");
     expect(p.availabilityStatus).toBe("PENDING_VERIFICATION");
     expect(p.publicationStatus).toBe("DRAFT");
-    expect(await db.productVariant.count({ where: { productId: p.id } })).toBe(2);
+    expect(p.sizesOffered).toEqual(["40", "41"]);
     const hist = await db.productCostHistory.findMany({ where: { productId: p.id } });
     expect(hist).toHaveLength(1);
     expect(hist[0].costPrice).toBe(4_500_000);
@@ -42,7 +41,7 @@ describe("alta de productos", () => {
 
   it("rechaza datos inválidos en el servidor", async () => {
     await expect(createProduct({ ...baseProduct, brand: "  " }, actor)).rejects.toThrow();
-    await expect(createProduct({ ...baseProduct, variants: [{ color: "negro", size: "XL" }] }, actor)).rejects.toThrow();
+    await expect(createProduct({ ...baseProduct, sizesOffered: ["XL"] }, actor)).rejects.toThrow();
     await expect(createProduct({ ...baseProduct, costPrice: -5 }, actor)).rejects.toThrow();
   });
 
@@ -69,14 +68,11 @@ describe("edición de productos", () => {
     expect(log?.reason).toBe("corrección");
   });
 
-  it("no marca agotadas las variantes que dejan de figurar", async () => {
-    const p = await createProduct(baseProduct, actor);
-    await updateVariants(p.id, [{ color: "negro", size: "40", availabilityStatus: "AVAILABLE_LAST_CHECK" }], actor, new Date());
-    const vs = await db.productVariant.findMany({ where: { productId: p.id }, orderBy: { size: "asc" } });
-    expect(vs.map((v) => [v.size, v.active, v.availabilityStatus])).toEqual([
-      ["40", true, "AVAILABLE_LAST_CHECK"],
-      ["41", false, "PENDING_VERIFICATION"],
-    ]);
+  it("ordena talles sin repetir y acepta productos sin color informado", async () => {
+    const p = await createProduct({ ...baseProduct, sizesOffered: ["42", "40", "40.5", "40"], colorsOffered: [], assortmentNote: "Surtidas" }, actor);
+    expect(p.sizesOffered).toEqual(["40", "40.5", "42"]);
+    expect(p.colorsOffered).toEqual([]);
+    expect(p.assortmentNote).toBe("Surtidas");
   });
 });
 
@@ -85,6 +81,8 @@ describe("publicación", () => {
     const p = await createProduct({ ...baseProduct, costPrice: null }, actor);
     const issues = await getPublicationIssues(p.id);
     expect(issues).toEqual(expect.arrayContaining(["Falta el costo del proveedor.", "Falta el precio de venta.", "No tiene fotos autorizadas para publicar."]));
+    const noSizes = await createProduct({ ...baseProduct, model: "Sin talles", sizesOffered: [] }, actor);
+    expect(await getPublicationIssues(noSizes.id)).toContain("No tiene talles cargados.");
     await expect(setPublicationStatus(p.id, "PUBLISHED", actor)).rejects.toMatchObject({ code: "publication_blocked" });
   });
 

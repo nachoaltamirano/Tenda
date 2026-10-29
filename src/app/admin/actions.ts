@@ -11,7 +11,7 @@ import { bool, date, int, list, money, num, reqStr, runAction, str } from "@/ser
 import { applyReviewedItem, createSupplierMessage, discardMessage } from "@/server/catalog/import";
 import { addProductImage, moveImage, removeImage, setCoverImage, setImageAuthorization } from "@/server/catalog/images";
 import { approveProposal, rejectProposal, requestPriceUpdate } from "@/server/catalog/prices";
-import { addVariants, createProduct, setPublicationStatus, setVariantState, updateProduct } from "@/server/catalog/products";
+import { createProduct, setPublicationStatus, updateProduct } from "@/server/catalog/products";
 import { saveDispatchSettings, savePricingSettings } from "@/server/settings";
 import type { dataSourceValues } from "@/lib/validation/catalog";
 
@@ -56,6 +56,9 @@ function productFields(fd: FormData) {
     otherCosts: money(fd, "otherCosts", "Otros costos"),
     accessoriesCost: money(fd, "accessoriesCost", "Accesorios"),
     salePrice: money(fd, "salePrice", "Precio de venta"),
+    sizesOffered: list(fd, "sizesOffered").map((x) => x.replace(",", ".")),
+    colorsOffered: list(fd, "colorsOffered"),
+    assortmentNote: str(fd, "assortmentNote"),
     availabilityStatus: (str(fd, "availabilityStatus") ?? "PENDING_VERIFICATION") as AvailabilityStatus,
     estimatedDeliveryDays: int(fd, "estimatedDeliveryDays"),
     dataSource: (str(fd, "dataSource") ?? "MANUAL") as DataSource,
@@ -75,23 +78,16 @@ function productFields(fd: FormData) {
 
 export async function createProductAction(_prev: State, fd: FormData): Promise<State> {
   const session = await requireAdmin();
-  const result = await runAction(async () => {
-    const sizes = list(fd, "sizes");
-    const colors = list(fd, "colors");
-    if (colors.length > 1 && sizes.length && !bool(fd, "confirmAllCombinations")) {
-      throw new BusinessError("Con varios colores, confirmá que todos los talles existen en todos los colores.");
-    }
-    const status = (str(fd, "variantStatus") ?? "PENDING_VERIFICATION") as AvailabilityStatus;
-    return createProduct(
+  const result = await runAction(async () =>
+    createProduct(
       {
         ...productFields(fd),
         costPrice: money(fd, "costPrice", "Costo del proveedor"),
-        variants: colors.flatMap((color) => sizes.map((size) => ({ color, size, availabilityStatus: status }))),
         confirmDuplicate: bool(fd, "confirmDuplicate"),
       },
       session,
-    );
-  });
+    ),
+  );
   if (!result.ok) return result;
   redirect(`/admin/productos/${result.data.id}`);
 }
@@ -109,49 +105,6 @@ export async function setPublicationAction(_prev: State, fd: FormData): Promise<
   const id = reqStr(fd, "id");
   const status = reqStr(fd, "status") as PublicationStatus;
   const r = await runAction(() => setPublicationStatus(id, status, session), "Estado de publicación actualizado.");
-  revalidatePath(`/admin/productos/${id}`);
-  return r;
-}
-
-export async function addVariantsAction(_prev: State, fd: FormData): Promise<State> {
-  const session = await requireAdmin();
-  const id = reqStr(fd, "id");
-  const r = await runAction(
-    () =>
-      addVariants(
-        id,
-        {
-          color: reqStr(fd, "color"),
-          sizes: list(fd, "sizes"),
-          availabilityStatus: (str(fd, "availabilityStatus") ?? "PENDING_VERIFICATION") as AvailabilityStatus,
-          consultedAt: date(fd, "consultedAt"),
-        },
-        session,
-      ),
-    "Variantes agregadas.",
-  );
-  revalidatePath(`/admin/productos/${id}`);
-  return r;
-}
-
-export async function setVariantAction(_prev: State, fd: FormData): Promise<State> {
-  const session = await requireAdmin();
-  const id = reqStr(fd, "id");
-  const active = str(fd, "active");
-  const r = await runAction(
-    () =>
-      setVariantState(
-        id,
-        reqStr(fd, "variantId"),
-        {
-          availabilityStatus: (str(fd, "availabilityStatus") ?? undefined) as AvailabilityStatus | undefined,
-          active: active === null ? undefined : active === "true",
-          consultedAt: bool(fd, "touchConsulted") ? new Date() : null,
-        },
-        session,
-      ),
-    "Variante actualizada.",
-  );
   revalidatePath(`/admin/productos/${id}`);
   return r;
 }
@@ -306,14 +259,14 @@ export async function applyItemAction(_prev: State, fd: FormData): Promise<State
         supplierSku: str(fd, "supplierSku"),
         colors: list(fd, "colors"),
         sizes: list(fd, "sizes").map((s) => s.replace(",", ".")),
+        assortmentNote: str(fd, "assortmentNote"),
         price: money(fd, "price", "Precio"),
         currency: (str(fd, "currency") ?? "ARS") as "ARS" | "USD",
-        variantStatus: (str(fd, "variantStatus") ?? "AVAILABLE_LAST_CHECK") as AvailabilityStatus,
+        availabilityStatus: (str(fd, "availabilityStatus") ?? "AVAILABLE_LAST_CHECK") as AvailabilityStatus,
         nextDispatchWeekday: int(fd, "nextDispatchWeekday"),
         nextDispatchDate: date(fd, "nextDispatchDate"),
         notes: str(fd, "notes"),
         confirmDuplicate: bool(fd, "confirmDuplicate"),
-        confirmAllCombinations: bool(fd, "confirmAllCombinations"),
         attachmentIds: fd.getAll("attachmentIds").map(String),
         authorizePhotos: bool(fd, "authorizePhotos"),
       },

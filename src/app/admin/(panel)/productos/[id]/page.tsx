@@ -11,11 +11,9 @@ import { getProductDetail } from "@/server/catalog/products";
 import { db } from "@/server/db";
 import { getPricingSettings } from "@/server/settings";
 import {
-  addVariantsAction,
   imageAction,
   requestPriceUpdateAction,
   setPublicationAction,
-  setVariantAction,
   updateProductAction,
   uploadImagesAction,
 } from "../../../actions";
@@ -30,9 +28,6 @@ const ACTION_LABELS: Record<string, string> = {
   price_rejected: "Propuesta rechazada",
   cost_confirmed: "Costo confirmado",
   publication: "Publicación",
-  variants_added: "Variantes agregadas",
-  variant_update: "Variante modificada",
-  variants_update: "Variantes",
   import_update: "Actualización desde mensaje",
   image_added: "Foto agregada",
   image_removed: "Foto quitada",
@@ -51,7 +46,6 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const stale = costAge === null || costAge > settings.stalePriceDays;
   const pending = p.priceProposals.find((x) => x.status === "PENDING");
   const sugg = a.suggestion?.ok ? a.suggestion : null;
-  const colors = [...new Set(p.variants.filter((v) => v.active).map((v) => v.color))];
 
   return (
     <>
@@ -143,6 +137,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             <p className="field-hint">No se aplica directamente: se crea una propuesta con el impacto en el margen para aprobar.</p>
             <div className="actions"><SubmitButton>Registrar consulta de precio</SubmitButton></div>
           </ActionForm>
+          <h3>Oferta del proveedor</h3>
+          <dl className="kv">
+            <dt>Talles</dt><dd>{p.sizesOffered.join(", ") || <Badge tone="warn">sin dato</Badge>}</dd>
+            <dt>Colores</dt><dd>{p.colorsOffered.join(", ") || "—"}</dd>
+            {p.assortmentNote && <><dt>Surtido</dt><dd>{p.assortmentNote}</dd></>}
+          </dl>
           <h3>Datos de origen</h3>
           <dl className="kv">
             <dt>Fuente</dt><dd>{DATA_SOURCE_LABELS[p.dataSource]}</dd>
@@ -159,60 +159,6 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           </dl>
         </Card>
       </div>
-
-      <Card title={`Talles y colores (${p.variants.filter((v) => v.active).length} activos)`}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Color</th><th>Talle</th><th>Disponibilidad</th><th>Última consulta</th><th></th></tr></thead>
-            <tbody>
-              {p.variants.map((v) => (
-                <tr key={v.id} style={v.active ? undefined : { opacity: 0.5 }}>
-                  <td>{v.color}</td>
-                  <td>{v.size}</td>
-                  <td>
-                    <ActionForm action={setVariantAction} className="inline-form">
-                      <input type="hidden" name="id" value={p.id} />
-                      <input type="hidden" name="variantId" value={v.id} />
-                      <select name="availabilityStatus" defaultValue={v.availabilityStatus}>
-                        {Object.entries(AVAILABILITY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                      </select>
-                      <label className="check"><input type="checkbox" name="touchConsulted" /> consultado hoy</label>
-                      <SubmitButton variant="secondary">Guardar</SubmitButton>
-                    </ActionForm>
-                  </td>
-                  <td>{formatDate(v.lastConsultedAt)}</td>
-                  <td>
-                    <ActionForm action={setVariantAction} className="inline-form">
-                      <input type="hidden" name="id" value={p.id} />
-                      <input type="hidden" name="variantId" value={v.id} />
-                      <input type="hidden" name="active" value={v.active ? "false" : "true"} />
-                      <SubmitButton variant="secondary">{v.active ? "Ocultar" : "Reactivar"}</SubmitButton>
-                    </ActionForm>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <h3>Agregar talles</h3>
-        <ActionForm action={addVariantsAction}>
-          <input type="hidden" name="id" value={p.id} />
-          <div className="form-grid">
-            <Field label="Color *">
-              <input name="color" list="colors" required />
-              <datalist id="colors">{colors.map((c) => <option key={c} value={c} />)}</datalist>
-            </Field>
-            <Field label="Talles *" hint="Separados por coma"><input name="sizes" required placeholder="39, 40, 41" /></Field>
-            <Field label="Estado">
-              <select name="availabilityStatus" defaultValue="PENDING_VERIFICATION">
-                {Object.entries(AVAILABILITY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select>
-            </Field>
-            <Field label="Fecha de consulta"><input type="date" name="consultedAt" /></Field>
-          </div>
-          <div className="actions"><SubmitButton variant="secondary">Agregar</SubmitButton></div>
-        </ActionForm>
-      </Card>
 
       <Card title={`Fotos (${p.images.length})`}>
         <div className="thumbs">

@@ -21,7 +21,7 @@ import { db, type Tx } from "../db";
 import { BusinessError } from "../errors";
 import { storeImage } from "./images";
 import { requestPriceUpdate, type PriceUpdateOutcome } from "./prices";
-import { createProduct, findDuplicateCandidates, syncVariants, type Actor } from "./products";
+import { createProduct, findDuplicateCandidates, type Actor } from "./products";
 
 type StoredParse = ParseResult & {
   applied: Record<
@@ -104,14 +104,7 @@ export async function getMessageForReview(id: string) {
 
 export async function applyReviewedItem(rawInput: ReviewedItemInput, actor: Actor) {
   const input = reviewedItemInput.parse(rawInput);
-  if (input.colors.length === 0) throw new BusinessError("Indicá al menos un color o dejá el ítem sin aplicar hasta confirmarlo.");
-  if (input.sizes.length === 0) throw new BusinessError("Indicá al menos un talle o dejá el ítem sin aplicar hasta confirmarlo.");
-  if (input.colors.length > 1 && !input.confirmAllCombinations) {
-    throw new BusinessError(
-      "El ítem tiene varios colores: confirmá que todos los talles existen en todos los colores, o cargalo como ítems separados.",
-      "combinations",
-    );
-  }
+  if (input.sizes.length === 0) throw new BusinessError("Indicá los talles que ofrece el proveedor o dejá el ítem sin aplicar hasta confirmarlo.");
 
   return db.$transaction(async (tx) => {
     const message = await tx.supplierMessage.findUnique({ where: { id: input.messageId } });
@@ -122,9 +115,6 @@ export async function applyReviewedItem(rawInput: ReviewedItemInput, actor: Acto
     if (parsed.applied[String(input.itemIndex)]) throw new BusinessError("Este ítem ya fue aplicado.", "already_applied");
 
     const dataDate = message.receivedAt ?? message.consultedAt;
-    const variants = input.colors.flatMap((color) =>
-      input.sizes.map((size) => ({ color, size, supplierSku: null, availabilityStatus: input.variantStatus })),
-    );
     let productId: string;
     let priceOutcome: PriceUpdateOutcome["kind"] | "initial" | undefined;
 
@@ -137,14 +127,16 @@ export async function applyReviewedItem(rawInput: ReviewedItemInput, actor: Acto
           model: input.model,
           currency: input.currency,
           costPrice: input.price,
-          availabilityStatus: input.variantStatus,
+          availabilityStatus: input.availabilityStatus,
+          sizesOffered: input.sizes,
+          colorsOffered: input.colors,
+          assortmentNote: input.assortmentNote,
           dataSource: message.source,
           dataDate,
           lastConsultedAt: message.consultedAt,
           nextDispatchWeekday: input.nextDispatchWeekday,
           nextDispatchDate: input.nextDispatchDate,
           notes: input.notes,
-          variants,
           confirmDuplicate: input.confirmDuplicate,
           isTestData: message.isTestData,
         },
@@ -165,16 +157,17 @@ export async function applyReviewedItem(rawInput: ReviewedItemInput, actor: Acto
         throw new BusinessError(`El precio está en ${input.currency} y el producto en ${p.currency}. Revisar antes de aplicar.`);
       }
       productId = p.id;
-      // Solo se actualizan las variantes informadas; las demás no se tocan
-      // (que no figuren en el mensaje no significa que estén agotadas).
-      await syncVariants(tx, p.id, variants, message.consultedAt, false);
       const newer = !p.lastConsultedAt || message.consultedAt > p.lastConsultedAt;
       const productData: Prisma.ProductUpdateInput = {};
       if (newer) {
         productData.lastConsultedAt = message.consultedAt;
         productData.dataSource = message.source;
         productData.dataDate = dataDate;
-        if (p.availabilityStatus !== "DISCONTINUED") productData.availabilityStatus = input.variantStatus;
+        if (p.availabilityStatus !== "DISCONTINUED") productData.availabilityStatus = input.availabilityStatus;
+        // La oferta más reciente reemplaza a la anterior. Sin colores informados se conservan los cargados.
+        productData.sizesOffered = input.sizes;
+        if (input.colors.length) productData.colorsOffered = input.colors;
+        if (input.assortmentNote) productData.assortmentNote = input.assortmentNote;
         if (input.nextDispatchWeekday !== null || input.nextDispatchDate !== null) {
           productData.nextDispatchWeekday = input.nextDispatchWeekday;
           productData.nextDispatchDate = input.nextDispatchDate;
@@ -189,8 +182,9 @@ export async function applyReviewedItem(rawInput: ReviewedItemInput, actor: Acto
         entityId: p.id,
         action: "import_update",
         changes: {
-          variants: variants.map((v) => `${v.color} ${v.size}`),
-          status: input.variantStatus,
+          sizesOffered: { from: p.sizesOffered, to: newer ? input.sizes : p.sizesOffered },
+          colorsOffered: { from: p.colorsOffered, to: newer && input.colors.length ? input.colors : p.colorsOffered },
+          status: input.availabilityStatus,
           consultedAt: message.consultedAt.toISOString(),
           olderThanCurrent: !newer,
         },
