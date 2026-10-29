@@ -7,3 +7,4 @@ backups/
 *.tsbuildinfo
 next-env.d.ts
 storage-test/
+*.bundle
