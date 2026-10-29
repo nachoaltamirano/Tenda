@@ -1,0 +1,330 @@
+// LOBBY — esquema de datos.
+// Convenciones:
+// - Importes monetarios en CENTAVOS (Int). 45.000 ARS = 4500000.
+// - Un importe null significa "dato desconocido" (no es lo mismo que 0).
+// - Los registros históricos (costos, auditoría) son de solo inserción.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Acceso al panel
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String // "Product", "PricingSettings", ...
+  entityId   String
+  action     String // "create", "update", "price_approved", "image_added", ...
+  changes    Json? // { campo: { from, to } }
+  reason     String?
+  userEmail  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Proveedor e importación asistida
+// ---------------------------------------------------------------------------
+
+enum DataSource {
+  WHATSAPP_GROUP // ofertas publicadas en el grupo del proveedor
+  WHATSAPP_DIRECT // consulta directa por WhatsApp
+  PHONE_CALL
+  SUPPLIER_LIST // lista de precios enviada como archivo
+  MANUAL
+  OTHER
+}
+
+model Supplier {
+  id          String            @id @default(cuid())
+  name        String
+  city        String?
+  contactNote String? // sin datos personales innecesarios
+  notes       String?
+  isTestData  Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  products    Product[]
+  messages    SupplierMessage[]
+}
+
+enum SupplierMessageStatus {
+  PENDING_REVIEW
+  PARTIALLY_APPLIED
+  APPLIED
+  DISCARDED
+}
+
+// Texto pegado tal cual fue recibido. Nunca se modifica el original.
+model SupplierMessage {
+  id           String                @id @default(cuid())
+  supplierId   String
+  supplier     Supplier              @relation(fields: [supplierId], references: [id])
+  source       DataSource
+  rawText      String
+  receivedAt   DateTime? // fecha/hora en que el proveedor lo envió, si se conoce
+  consultedAt  DateTime // fecha de la consulta / lectura del mensaje
+  status       SupplierMessageStatus @default(PENDING_REVIEW)
+  parsedResult Json? // propuesta del intérprete (para auditoría)
+  createdBy    String?
+  isTestData   Boolean               @default(false)
+  createdAt    DateTime              @default(now())
+
+  costEntries    ProductCostHistory[]
+  priceProposals PriceChangeProposal[]
+
+  @@index([consultedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo
+// ---------------------------------------------------------------------------
+
+enum AvailabilityStatus {
+  PENDING_VERIFICATION // Pendiente de verificar
+  AVAILABLE_LAST_CHECK // Disponible según última consulta
+  CONFIRMED_FOR_ORDER // Disponibilidad confirmada para un pedido
+  SOLD_OUT_CONFIRMED // Agotado confirmado
+  DISCONTINUED // Discontinuado
+}
+
+enum PublicationStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+}
+
+enum Currency {
+  ARS
+  USD
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  internalSku String    @unique
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  supplierSku String?
+  brand       String
+  model       String
+  nameKey     String // marca+modelo normalizados, para detectar duplicados
+  slug        String    @unique
+  description String?
+  category    String?
+  currency    Currency  @default(ARS)
+
+  // Costos vigentes (centavos). null = desconocido.
+  costPrice       Int?
+  transportCost   Int?
+  otherCosts      Int?
+  accessoriesCost Int?
+  costUpdatedAt   DateTime? // fecha de la consulta que dio origen al costo vigente
+
+  // Precio publicado (centavos). Solo cambia por acción explícita del administrador.
+  salePrice          Int?
+  salePriceUpdatedAt DateTime?
+
+  availabilityStatus    AvailabilityStatus @default(PENDING_VERIFICATION)
+  publicationStatus     PublicationStatus  @default(DRAFT)
+  estimatedDeliveryDays Int? // null = usar el plazo general configurado
+
+  dataSource      DataSource @default(MANUAL)
+  dataDate        DateTime? // fecha del dato informado por la fuente
+  dataVerified    Boolean    @default(false)
+  lastConsultedAt DateTime?
+
+  // Próximo despacho informado por el proveedor
+  nextDispatchDate      DateTime?
+  nextDispatchWeekday   Int? // 0=domingo..6=sábado, cuando solo se informó el día
+  nextDispatchMode      String?
+  nextDispatchConfirmed Boolean   @default(false)
+
+  notes      String?
+  conditions String?
+  isTestData Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  variants       ProductVariant[]
+  images         ProductImage[]
+  costHistory    ProductCostHistory[]
+  priceProposals PriceChangeProposal[]
+
+  @@index([nameKey])
+  @@index([supplierId, supplierSku])
+  @@index([publicationStatus])
+}
+
+model ProductVariant {
+  id                 String             @id @default(cuid())
+  productId          String
+  product            Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color              String
+  colorKey           String // normalizado
+  size               String // "40", "40.5"
+  supplierSku        String?
+  availabilityStatus AvailabilityStatus @default(PENDING_VERIFICATION)
+  lastConsultedAt    DateTime?
+  active             Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([productId, colorKey, size])
+}
+
+enum ImageSourceType {
+  SUPPLIER
+  OWN_PHOTO
+  OTHER_AUTHORIZED
+}
+
+// Las imágenes no se borran físicamente: se marcan con deletedAt para no
+// romper pedidos ni publicaciones que las referencian.
+model ProductImage {
+  id                       String          @id @default(cuid())
+  productId                String
+  product                  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  originalKey              String
+  optimizedKey             String?
+  thumbKey                 String?
+  mimeType                 String
+  width                    Int?
+  height                   Int?
+  sourceType               ImageSourceType
+  sourceNote               String?
+  authorizedForPublication Boolean         @default(false)
+  position                 Int             @default(0)
+  isCover                  Boolean         @default(false)
+  deletedAt                DateTime?
+  createdAt                DateTime        @default(now())
+
+  @@index([productId, position])
+}
+
+// Historial de costos: una fila por cada costo confirmado. Solo inserción.
+model ProductCostHistory {
+  id                String           @id @default(cuid())
+  productId         String
+  product           Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currency          Currency
+  costPrice         Int?
+  transportCost     Int?
+  otherCosts        Int?
+  consultedAt       DateTime
+  source            DataSource
+  supplierMessageId String?
+  supplierMessage   SupplierMessage? @relation(fields: [supplierMessageId], references: [id])
+  note              String?
+  createdBy         String?
+  createdAt         DateTime         @default(now())
+
+  @@index([productId, consultedAt])
+}
+
+enum PriceProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+// Propuesta de cambio de costo/precio pendiente de aprobación.
+model PriceChangeProposal {
+  id                String              @id @default(cuid())
+  productId         String
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplierMessageId String?
+  supplierMessage   SupplierMessage?    @relation(fields: [supplierMessageId], references: [id])
+  source            DataSource
+  oldCostPrice      Int?
+  newCostPrice      Int
+  oldConsultedAt    DateTime?
+  newConsultedAt    DateTime
+  oldSalePrice      Int?
+  proposedSalePrice Int? // precio sugerido con el nuevo costo
+  impact            Json // snapshot del cálculo antes/después
+  belowMinMargin    Boolean             @default(false)
+  status            PriceProposalStatus @default(PENDING)
+  appliedSalePrice  Int?
+  decidedBy         String?
+  decidedAt         DateTime?
+  decisionNote      String?
+  createdAt         DateTime            @default(now())
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Configuración (filas únicas id = 1)
+// ---------------------------------------------------------------------------
+
+enum TargetMode {
+  FIXED_PROFIT // ganancia fija en centavos
+  MARGIN_PERCENT // margen sobre precio de venta
+  MARKUP_PERCENT // recargo sobre costo total
+}
+
+enum RoundingMode {
+  UP
+  NEAREST
+  DOWN
+}
+
+model PricingSettings {
+  id                   Int          @id @default(1)
+  configured           Boolean      @default(false) // false hasta que el administrador revise los valores
+  packagingCost        Int? // embalaje por par
+  deliveryCostAssumed  Int? // envío al cliente que asume LOBBY
+  defaultTransportCost Int? // transporte desde el proveedor, si el producto no tiene uno propio
+  paymentFeePercent    Float? // comisión de cobro sobre el precio de venta
+  paymentFeeFixed      Int?
+  taxPercent           Float? // impuestos sobre el precio de venta (ej. IIBB)
+  targetMode           TargetMode   @default(MARGIN_PERCENT)
+  targetValue          Float? // centavos si FIXED_PROFIT; porcentaje si no
+  minMarginPercent     Float?
+  roundingStep         Int          @default(100000) // 1.000 ARS
+  roundingMode         RoundingMode @default(UP)
+  roundingOffset       Int          @default(0) // ej. -10000 para terminar en 900
+  stalePriceDays       Int          @default(7) // días tras los cuales un costo se considera desactualizado
+  updatedAt            DateTime     @updatedAt
+}
+
+model DispatchSettings {
+  id               Int      @id @default(1)
+  weekdays         Int[]    @default([2, 4, 5]) // martes, jueves, viernes
+  maxEstimatedDays Int      @default(5)
+  updatedAt        DateTime @updatedAt
+}
+
+model Holiday {
+  id          String   @id @default(cuid())
+  date        DateTime @unique @db.Date
+  description String
+}

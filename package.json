@@ -1,0 +1,54 @@
+{
+  "name": "lobby",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "test": "tsx scripts/prepare-test-db.ts && vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
+    "db:backup": "bash scripts/backup.sh",
+    "test:db:prepare": "tsx scripts/prepare-test-db.ts",
+    "db:seed:demo": "tsx prisma/seed.ts --demo"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "bcryptjs": "2.4.3",
+    "jose": "5.10.0",
+    "next": "15.5.28",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "sharp": "0.34.4",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "22.18.0",
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "dotenv": "16.6.1",
+    "prisma": "6.19.3",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "sharp",
+      "esbuild"
+    ]
+  }
+}
