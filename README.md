@@ -3,7 +3,7 @@
 Aplicación para operar LOBBY: catálogo del proveedor, precios y rentabilidad, pedidos por encargo,
 stock propio, caja, tienda pública y contenido para redes.
 
-**Estado actual: Etapas 1 y 2 (base funcional).** Ver [docs/PLAN.md](docs/PLAN.md) para el detalle de lo terminado y lo pendiente.
+**Estado actual: Etapas 1 y 2 terminadas; etapa 3 (pedidos y caja) funcional, falta stock propio.** Ver [docs/PLAN.md](docs/PLAN.md) para el detalle de lo terminado y lo pendiente.
 
 | Documento | Contenido |
 |---|---|
@@ -69,3 +69,9 @@ Ninguna variable se expone al navegador.
 5. **Precios pendientes**: comparar antes/después y aprobar (manteniendo el precio, usando el sugerido u otro) o rechazar.
 6. **Fotos**: subir varias, ordenarlas, elegir portada, indicar la fuente y si están autorizadas para publicar.
 7. **Publicar**: solo se permite con costo, precio, talles, foto autorizada y margen válido.
+8. **Pedidos**: crear el pedido cuando alguien consulta (desde la ficha del producto o *Crear pedido*). Elegir talle y color,
+   consultar al proveedor y *Registrar confirmación del proveedor* (calcula despacho y llegada estimados), luego
+   *Pedido confirmado* → *Registrar compra* → *Marcar recibido* → inspección → cobro → entrega → *Cerrado*.
+   La tarjeta *Avanzar el pedido* muestra qué falta para cada paso.
+9. **Caja**: cobrado, pagado, saldos a cobrar, capital comprometido y ganancia real. Los gastos generales se cargan ahí;
+   los de un pedido, desde el pedido.

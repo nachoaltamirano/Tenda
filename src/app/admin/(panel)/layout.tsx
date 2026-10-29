@@ -19,11 +19,14 @@ export default async function PanelLayout({ children }: { children: React.ReactN
           <Link href="/admin/productos/nuevo">+ Registrar producto</Link>
           <Link href="/admin/importar">Importar mensaje</Link>
           <Link href="/admin/precios">Precios pendientes</Link>
+          <div className="section">Operación</div>
+          <Link href="/admin/pedidos">Pedidos</Link>
+          <Link href="/admin/pedidos/nuevo">+ Crear pedido</Link>
+          <Link href="/admin/caja">Caja</Link>
           <div className="section">Configuración</div>
           <Link href="/admin/configuracion">Precios y despacho</Link>
           <div className="section">Próximas etapas</div>
-          <div className="pending">Pedidos · Stock · Caja</div>
-          <div className="pending">Tienda · Contenido</div>
+          <div className="pending">Stock propio · Tienda · Contenido</div>
         </nav>
         <form action={logoutAction}>
           <small style={{ display: "block", padding: "0 .6rem .4rem" }}>{session.email}</small>

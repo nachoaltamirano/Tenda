@@ -181,3 +181,78 @@ export const dispatchSettingsInput = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)).min(1, "Elegí al menos un día de despacho"),
   maxEstimatedDays: z.number().int().min(1).max(60),
 });
+
+// ---------------------------------------------------------------------------
+// Pedidos
+// ---------------------------------------------------------------------------
+
+export const channelValues = ["WEBSITE", "INSTAGRAM", "FACEBOOK_MARKETPLACE", "WHATSAPP", "OTHER"] as const;
+export const CHANNEL_LABELS: Record<(typeof channelValues)[number], string> = {
+  WEBSITE: "Tienda online",
+  INSTAGRAM: "Instagram",
+  FACEBOOK_MARKETPLACE: "Facebook Marketplace",
+  WHATSAPP: "WhatsApp",
+  OTHER: "Otro",
+};
+export const paymentMethodValues = ["CASH", "TRANSFER", "MERCADO_PAGO", "CARD", "OTHER"] as const;
+export const PAYMENT_METHOD_LABELS: Record<(typeof paymentMethodValues)[number], string> = {
+  CASH: "Efectivo",
+  TRANSFER: "Transferencia",
+  MERCADO_PAGO: "Mercado Pago",
+  CARD: "Tarjeta",
+  OTHER: "Otro",
+};
+export const deliveryMethodValues = ["PICKUP", "OWN_DELIVERY", "CARRIER"] as const;
+export const DELIVERY_METHOD_LABELS: Record<(typeof deliveryMethodValues)[number], string> = {
+  PICKUP: "Retiro en persona",
+  OWN_DELIVERY: "Entrega propia",
+  CARRIER: "Envío por transporte/correo",
+};
+
+const orderItemInput = z.object({
+  productId: z.string().min(1, "Elegí el producto"),
+  size: z.string().trim().regex(/^\d{2}(\.5)?$/, "Talle inválido").nullable().optional().transform((v) => v || null),
+  color: optText(60),
+  quantity: z.number().int().min(1).max(20).default(1),
+  /** null = usar el precio publicado del producto */
+  agreedPrice: optCents,
+});
+
+export const orderCreateInput = z.object({
+  customerId: z.string().nullable().optional().transform((v) => v || null),
+  customerName: optText(120),
+  customerPhone: optText(40),
+  channel: z.enum(channelValues),
+  items: z.array(orderItemInput).min(1, "Agregá al menos un producto").max(20),
+  internalNotes: optText(2000),
+  isTestData: z.boolean().default(false),
+});
+export type OrderCreateInput = z.input<typeof orderCreateInput>;
+
+export const orderItemUpdateInput = z.object({
+  size: z.string().trim().regex(/^\d{2}(\.5)?$/, "Talle inválido").nullable().optional().transform((v) => v || null),
+  color: optText(60),
+  quantity: z.number().int().min(1).max(20),
+  agreedPrice: cents,
+});
+
+export const paymentInput = z.object({
+  orderId: z.string().min(1),
+  amount: cents.refine((v) => v > 0, "El importe debe ser mayor a 0"),
+  method: z.enum(paymentMethodValues),
+  paidAt: z.coerce.date(),
+  reference: optText(80),
+  idempotencyKey: z.string().min(8),
+});
+export type PaymentInput = z.input<typeof paymentInput>;
+
+export const cashMovementTypes = ["CUSTOMER_PAYMENT", "OTHER_INCOME", "SUPPLIER_PAYMENT", "REFUND", "ORDER_EXPENSE", "OPERATING_EXPENSE"] as const;
+export const CASH_TYPE_LABELS: Record<(typeof cashMovementTypes)[number], string> = {
+  CUSTOMER_PAYMENT: "Cobro a cliente",
+  OTHER_INCOME: "Otro ingreso",
+  SUPPLIER_PAYMENT: "Pago al proveedor",
+  REFUND: "Devolución a cliente",
+  ORDER_EXPENSE: "Gasto de pedido",
+  OPERATING_EXPENSE: "Gasto operativo",
+};
+export const INCOME_TYPES = ["CUSTOMER_PAYMENT", "OTHER_INCOME"] as const;

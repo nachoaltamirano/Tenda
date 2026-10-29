@@ -62,12 +62,15 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             {p.dataVerified ? <Badge tone="ok">verificado</Badge> : <Badge tone="warn">sin verificar</Badge>}
           </div>
         </div>
+        <div className="inline-form">
+        <Link className="btn btn-secondary" href={`/admin/pedidos/nuevo?product=${p.id}`}>Crear pedido</Link>
         <ActionForm action={setPublicationAction} className="inline-form">
           <input type="hidden" name="id" value={p.id} />
           {p.publicationStatus !== "PUBLISHED" && <SubmitButton name="status" value="PUBLISHED">Publicar</SubmitButton>}
           {p.publicationStatus === "PUBLISHED" && <SubmitButton variant="secondary" name="status" value="PAUSED">Pausar</SubmitButton>}
           {p.publicationStatus !== "DRAFT" && <SubmitButton variant="secondary" name="status" value="DRAFT">Pasar a borrador</SubmitButton>}
         </ActionForm>
+        </div>
       </div>
 
       {publicationBlockers.length > 0 && p.publicationStatus !== "PUBLISHED" && (

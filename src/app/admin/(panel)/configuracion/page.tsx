@@ -5,11 +5,17 @@ import { WEEKDAY_NAMES } from "@/lib/text";
 import { db } from "@/server/db";
 import { getDispatchSettings, getPricingSettings } from "@/server/settings";
 import { saveDispatchSettingsAction, savePricingSettingsAction, saveSupplierAction } from "../../actions";
+import { holidayAction } from "../../order-actions";
 
 export const metadata = { title: "Configuración" };
 
 export default async function SettingsPage() {
-  const [s, d, suppliers] = await Promise.all([getPricingSettings(), getDispatchSettings(), db.supplier.findMany({ orderBy: { createdAt: "asc" } })]);
+  const [s, d, suppliers, holidays] = await Promise.all([
+    getPricingSettings(),
+    getDispatchSettings(),
+    db.supplier.findMany({ orderBy: { createdAt: "asc" } }),
+    db.holiday.findMany({ where: { date: { gte: new Date(Date.now() - 86_400_000) } }, orderBy: { date: "asc" } }),
+  ]);
   const pct = (v: number | null) => (v === null ? "" : String(v).replace(".", ","));
   return (
     <>
@@ -79,7 +85,19 @@ export default async function SettingsPage() {
             <Field label="Plazo máximo estimado (días)"><input type="number" min={1} max={60} name="maxEstimatedDays" defaultValue={d.maxEstimatedDays} /></Field>
             <div className="actions"><SubmitButton>Guardar</SubmitButton></div>
           </ActionForm>
-          <p className="field-hint">El calendario de despachos, feriados e incidencias se implementa con el módulo de pedidos (etapa 3).</p>
+          <h3>Feriados y días sin despacho</h3>
+          {holidays.map((h) => (
+            <ActionForm key={h.id} action={holidayAction} className="inline-form">
+              <input type="hidden" name="removeId" value={h.id} />
+              <span>{h.date.toISOString().slice(0, 10).split("-").reverse().join("/")} · {h.description}</span>
+              <SubmitButton variant="secondary">Quitar</SubmitButton>
+            </ActionForm>
+          ))}
+          <ActionForm action={holidayAction} className="inline-form">
+            <input type="date" name="date" required />
+            <input name="description" placeholder="Feriado / el proveedor no despacha" />
+            <SubmitButton variant="secondary">Agregar</SubmitButton>
+          </ActionForm>
         </Card>
 
         <Card title="Proveedores">

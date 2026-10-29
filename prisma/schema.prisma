@@ -100,6 +100,7 @@ model SupplierMessage {
   attachments    SupplierMessageAttachment[]
   costEntries    ProductCostHistory[]
   priceProposals PriceChangeProposal[]
+  orderItems     OrderItem[]
 
   @@index([consultedAt])
 }
@@ -205,6 +206,7 @@ model Product {
   images         ProductImage[]
   costHistory    ProductCostHistory[]
   priceProposals PriceChangeProposal[]
+  orderItems     OrderItem[]
 
   @@index([nameKey])
   @@index([supplierId, supplierSku])
@@ -342,4 +344,230 @@ model Holiday {
   id          String   @id @default(cuid())
   date        DateTime @unique @db.Date
   description String
+}
+
+// ---------------------------------------------------------------------------
+// Clientes y pedidos (etapa 3)
+// ---------------------------------------------------------------------------
+
+enum SalesChannel {
+  WEBSITE
+  INSTAGRAM
+  FACEBOOK_MARKETPLACE
+  WHATSAPP
+  OTHER
+}
+
+// Solo los datos necesarios para contactar y entregar.
+model Customer {
+  id         String       @id @default(cuid())
+  name       String
+  phone      String?
+  phoneKey   String? // solo dígitos, para buscar y evitar duplicados
+  channel    SalesChannel @default(WHATSAPP)
+  notes      String?
+  isTestData Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  orders     Order[]
+
+  @@index([phoneKey])
+}
+
+enum OrderStatus {
+  INQUIRY // 1. Consulta recibida
+  VERIFYING_PRODUCT // 2. Verificando producto
+  AWAITING_SUPPLIER // 3. Esperando confirmación del proveedor
+  QUOTE_SENT // 4. Cotización enviada
+  AWAITING_CUSTOMER // 5. Esperando confirmación del cliente
+  CONFIRMED // 6. Pedido confirmado
+  PURCHASE_PENDING // 7. Compra pendiente
+  PURCHASED // 8. Comprado al proveedor
+  IN_TRANSIT // 9. En tránsito
+  RECEIVED_PENDING_INSPECTION // 10. Recibido: pendiente de inspección
+  INSPECTED_APPROVED // 11. Inspeccionado y aprobado
+  AWAITING_PAYMENT // 12. Esperando pago
+  PAYMENT_CONFIRMED // 13. Pago confirmado
+  READY_FOR_DELIVERY // 14. Preparado para entrega
+  DELIVERED // 15. Enviado o entregado
+  CLOSED // 16. Cerrado
+  CANCELLED
+  RETURNED
+  INCIDENT
+}
+
+enum DeliveryMethod {
+  PICKUP // retiro en persona
+  OWN_DELIVERY // entrega propia
+  CARRIER // envío por transporte o correo
+}
+
+model Order {
+  id                   String       @id @default(cuid())
+  code                 String       @unique // LB-2610-0001
+  customerId           String
+  customer             Customer     @relation(fields: [customerId], references: [id])
+  channel              SalesChannel
+  status               OrderStatus  @default(INQUIRY)
+  statusBeforeIncident OrderStatus?
+
+  // Proveedor y despacho. Las fechas estimadas y las confirmadas se guardan por separado.
+  supplierQueriedAt     DateTime?
+  supplierConfirmedAt   DateTime? // el proveedor confirmó disponibilidad del par puntual
+  supplierConfirmNote   String?
+  estimatedDispatchDate DateTime? @db.Date
+  confirmedDispatchDate DateTime? @db.Date
+  actualDispatchDate    DateTime? @db.Date
+  estimatedArrivalDate  DateTime? @db.Date
+  actualArrivalDate     DateTime? @db.Date
+  carrier               String?
+  trackingCode          String?
+  purchasedAt           DateTime?
+
+  // Entrega
+  deliveryMethod      DeliveryMethod?
+  deliveryAddress     String?
+  deliveryScheduledAt DateTime?
+  deliveredAt         DateTime?
+
+  // Cierre con saldo pendiente (excepción autorizada)
+  closeExceptionReason String?
+  closeExceptionBy     String?
+
+  cancelReason  String?
+  internalNotes String?
+  isTestData    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         OrderItem[]
+  payments      Payment[]
+  statusChanges OrderStatusChange[]
+  incidents     OrderIncident[]
+  cashMovements CashMovement[]
+
+  @@index([status])
+  @@index([customerId])
+}
+
+enum InspectionResult {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Copia de los datos acordados: una actualización del catálogo no la modifica.
+model OrderItem {
+  id                String           @id @default(cuid())
+  orderId           String
+  order             Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String?
+  product           Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  brand             String
+  model             String
+  internalSku       String?
+  size              String?
+  color             String?
+  quantity          Int              @default(1)
+  agreedPrice       Int // precio unitario acordado con el cliente (centavos)
+  costSnapshot      Int? // costo del proveedor vigente al cotizar
+  costHistoryId     String?
+  costConsultedAt   DateTime?
+  actualCost        Int? // costo realmente pagado al proveedor
+  inspection        InspectionResult @default(PENDING)
+  inspectionNotes   String?
+  inspectedAt       DateTime?
+  inspectedBy       String?
+  createdAt         DateTime         @default(now())
+  supplierMessage   SupplierMessage? @relation(fields: [supplierMessageId], references: [id])
+  supplierMessageId String?
+}
+
+model OrderStatusChange {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  from      OrderStatus?
+  to        OrderStatus
+  note      String?
+  userEmail String?
+  createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  MERCADO_PAGO
+  CARD
+  OTHER
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  orderId        String
+  order          Order         @relation(fields: [orderId], references: [id])
+  amount         Int
+  method         PaymentMethod
+  paidAt         DateTime
+  reference      String? // n° de operación
+  idempotencyKey String        @unique // impide registrar dos veces el mismo pago
+  createdBy      String?
+  createdAt      DateTime      @default(now())
+  cashMovement   CashMovement?
+
+  @@unique([method, reference])
+}
+
+enum IncidentType {
+  DELAY
+  MISSING
+  WRONG_ITEM
+  DAMAGED
+  CUSTOMER
+  OTHER
+}
+
+model OrderIncident {
+  id          String       @id @default(cuid())
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type        IncidentType
+  description String
+  resolvedAt  DateTime?
+  resolution  String?
+  createdBy   String?
+  createdAt   DateTime     @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Caja
+// ---------------------------------------------------------------------------
+
+enum CashMovementType {
+  CUSTOMER_PAYMENT // ingreso: cobro a cliente
+  OTHER_INCOME
+  SUPPLIER_PAYMENT // egreso: compra al proveedor
+  REFUND // egreso: devolución a cliente
+  ORDER_EXPENSE // egreso: envío, embalaje, comisión de un pedido
+  OPERATING_EXPENSE // egreso: gasto operativo general
+}
+
+model CashMovement {
+  id          String           @id @default(cuid())
+  type        CashMovementType
+  amount      Int // siempre positivo; el tipo indica si entra o sale
+  occurredAt  DateTime
+  description String
+  orderId     String?
+  order       Order?           @relation(fields: [orderId], references: [id])
+  paymentId   String?          @unique
+  payment     Payment?         @relation(fields: [paymentId], references: [id])
+  method      PaymentMethod?
+  createdBy   String?
+  isTestData  Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([occurredAt])
+  @@index([orderId])
 }
