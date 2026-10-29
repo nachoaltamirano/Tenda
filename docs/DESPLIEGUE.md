@@ -6,41 +6,40 @@ y crea la configuración inicial (`pnpm build:deploy`, definido en `vercel.json`
 
 Las claves se cargan **solo** en Vercel (Settings → Environment Variables). No se escriben en el código ni en el chat.
 
-## 1. Supabase (base de datos y fotos)
+## Camino recomendado: integración Vercel–Supabase
 
-1. Crear una cuenta en https://supabase.com y un proyecto nuevo:
-   - Región: **South America (São Paulo)**, cerca de Argentina y de la región de Vercel elegida (`gru1`).
-   - Anotar la contraseña de la base de datos.
-2. **Base de datos**: botón *Connect* → pestaña *ORMs* → *Prisma*. Copiar:
-   - `DATABASE_URL`: la del **Transaction pooler** (puerto 6543), terminada en `?pgbouncer=true&connection_limit=1`.
-   - `DIRECT_URL`: la del **Session pooler** (puerto 5432). Se usa para las migraciones.
-   - Reemplazar `[YOUR-PASSWORD]` por la contraseña del paso 1.
-3. **Fotos**: menú *Storage* → *New bucket* → nombre `lobby-media`, **sin** marcar "Public bucket".
-4. **Acceso S3 a las fotos**: *Storage* → *Settings* (o *S3 Connection*):
-   - Copiar **Endpoint** y **Region**.
-   - *New access key* → copiar **Access key ID** y **Secret access key** (el secreto se muestra una sola vez).
+El proyecto de Supabase **`lobby`** (región São Paulo, `sa-east-1`) ya está creado dentro de la cuenta de Supabase
+vinculada a Vercel, con el espacio privado de fotos `lobby-media`. Al conectarlo al proyecto de Vercel, la integración
+carga sola las variables de base de datos y de Storage (`POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`,
+`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, …) y la app las usa sin configuración adicional.
 
-## 2. Vercel (servidor)
-
-1. Entrar a https://vercel.com con la cuenta de GitHub → *Add New… → Project* → importar `nachoaltamirano/Tenda`.
-2. Antes de *Deploy*, en *Environment Variables* cargar:
+1. https://vercel.com → *Add New… → Project* → importar `nachoaltamirano/Tenda`. Si el primer despliegue falla por falta
+   de base de datos, es normal: se conecta en el paso 2.
+2. En el proyecto de Vercel: pestaña **Storage** → *Connect Database* → elegir el proyecto de Supabase **`lobby`** → *Connect*.
+3. *Settings → Environment Variables* → agregar solo estas:
 
 | Variable | Valor |
 |---|---|
-| `DATABASE_URL` | Transaction pooler de Supabase (paso 1.2) |
-| `DIRECT_URL` | Session pooler de Supabase (paso 1.2) |
 | `SESSION_SECRET` | Texto aleatorio de 48+ caracteres (generarlo con un gestor de contraseñas). Si cambia, se cierran todas las sesiones |
-| `STORAGE_DRIVER` | `s3` |
-| `S3_ENDPOINT` | Endpoint de Supabase Storage (paso 1.4) |
-| `S3_REGION` | Region de Supabase Storage (paso 1.4) |
-| `S3_BUCKET` | `lobby-media` |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Claves del paso 1.4 |
 | `ADMIN_EMAIL` / `ADMIN_NAME` | Tu email y nombre para entrar al panel |
 | `ADMIN_INITIAL_PASSWORD` | Contraseña inicial (10+ caracteres). Solo se usa si todavía no hay administradores |
-| `PUBLIC_SITE_URL` | La URL que asigne Vercel (ej. `https://tenda.vercel.app`); después, el dominio propio |
 
-3. *Deploy*. Al terminar, el panel queda en `https://<proyecto>.vercel.app/admin`.
-4. Después del primer despliegue, borrar `ADMIN_INITIAL_PASSWORD` de Vercel (el administrador ya existe).
+4. *Deployments* → último despliegue → *Redeploy*. El build aplica las migraciones, crea el administrador y publica.
+   El panel queda en `https://<proyecto>.vercel.app/admin`.
+5. Después del primer despliegue, borrar `ADMIN_INITIAL_PASSWORD` de Vercel.
+
+## Alternativa: configuración manual
+
+Si no se usa la integración: definir `DATABASE_URL` (Transaction pooler de Supabase, puerto 6543, con
+`?pgbouncer=true&connection_limit=1`), `DIRECT_URL` (Session pooler, puerto 5432), y para las fotos `SUPABASE_URL`
++ `SUPABASE_SECRET_KEY` (Supabase → *Project Settings → API Keys*), o bien `STORAGE_DRIVER=s3` con las claves S3 de
+*Storage → Settings*. Las variables definidas a mano tienen prioridad sobre las de la integración.
+
+## Seguridad de la base en Supabase
+
+La app accede a la base solo desde el servidor. La migración `supabase_lockdown` activa RLS y quita permisos a los roles
+`anon` y `authenticated`, para que la API pública de Supabase no exponga ninguna tabla. El espacio de fotos es privado:
+las imágenes se entregan a través de la app, que controla qué se puede ver.
 
 ## 3. Dominio propio (cuando lo tengas)
 

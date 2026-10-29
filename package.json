@@ -18,7 +18,7 @@
     "test:db:prepare": "tsx scripts/prepare-test-db.ts",
     "db:seed:demo": "tsx prisma/seed.ts --demo",
     "postinstall": "prisma generate",
-    "build:deploy": "prisma migrate deploy && tsx prisma/seed.ts && next build"
+    "build:deploy": "tsx scripts/deploy-build.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
