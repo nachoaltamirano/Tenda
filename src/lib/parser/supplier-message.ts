@@ -4,7 +4,7 @@
 
 import { normalizeKey, stripAccents } from "@/lib/text";
 
-export type FieldName = "brand" | "model" | "colors" | "sizes" | "price" | "supplierSku" | "dispatch" | "stock" | "notes";
+export type FieldName = "brand" | "model" | "colors" | "sizes" | "price" | "supplierSku" | "dispatch" | "stock" | "notes" | "photos";
 
 export type ParsedDispatch = {
   text: string;
@@ -25,6 +25,8 @@ export type ParsedItem = {
   dispatch: ParsedDispatch | null;
   stockNote: string | null;
   notes: string | null;
+  /** Nombres de archivo de fotos mencionados en el texto, en el orden en que aparecen. */
+  photos: string[];
   /** Campos deducidos de texto libre (sin etiqueta "Campo:"): revisar con más cuidado. */
   inferred: FieldName[];
   missing: FieldName[];
@@ -68,6 +70,12 @@ const KEY_ALIASES: Record<string, FieldName> = {
   sale: "dispatch",
   stock: "stock",
   disponibilidad: "stock",
+  foto: "photos",
+  fotos: "photos",
+  imagen: "photos",
+  imagenes: "photos",
+  archivo: "photos",
+  archivos: "photos",
   obs: "notes",
   observaciones: "notes",
   nota: "notes",
@@ -239,6 +247,19 @@ function detectBrand(text: string): { brand: string; rest: string } | null {
   return null;
 }
 
+// Sin espacios: "IMG-20261029-WA0012.jpg", "af1_negra.png". Un espacio haría ambiguo dónde empieza el nombre.
+const FILENAME_RE = /[\p{L}\p{N}_()\-][\p{L}\p{N}_()\-.]*\.(?:jpe?g|png|webp|heic|heif|avif)\b/giu;
+
+/** Nombres de archivo de imagen presentes en un texto. */
+export function extractFilenames(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(FILENAME_RE)) {
+    const name = m[0].trim();
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
 function cleanValue(v: string): string {
   return v.trim().replace(/^[\s:=\-–]+/, "").replace(/[\s.,;]+$/, "").trim();
 }
@@ -282,13 +303,18 @@ function extractKeyValues(text: string): { kvs: KV[]; leading: string } {
 function emptyItem(rawText: string): ParsedItem {
   return {
     rawText, brand: null, model: null, colors: [], sizes: [], price: null, currency: null,
-    supplierSku: null, dispatch: null, stockNote: null, notes: null,
+    supplierSku: null, dispatch: null, stockNote: null, notes: null, photos: [],
     inferred: [], missing: [], warnings: [], clarifications: [],
   };
 }
 
 function applyKV(item: ParsedItem, kv: KV, consultedAt: Date) {
-  const v = kv.value;
+  let v = kv.value;
+  if (kv.field !== "photos") {
+    // Un nombre de archivo en la línea siguiente queda pegado al valor anterior: se separa.
+    for (const f of extractFilenames(v)) if (!item.photos.includes(f)) item.photos.push(f);
+    v = cleanValue(v.replace(FILENAME_RE, " ").replace(/\b(fotos?|imagen(es)?|archivos?)\s*:?\s*$/i, " "));
+  }
   if (!v) {
     item.clarifications.push(`El campo "${kv.field}" aparece sin valor.`);
     return;
@@ -337,6 +363,12 @@ function applyKV(item: ParsedItem, kv: KV, consultedAt: Date) {
     case "stock":
       item.stockNote = v;
       break;
+    case "photos": {
+      const files = extractFilenames(v);
+      if (files.length === 0) item.clarifications.push(`No se reconoce un nombre de archivo de imagen en "${v}" (ej: foto1.jpg).`);
+      for (const f of files) if (!item.photos.includes(f)) item.photos.push(f);
+      break;
+    }
     case "notes":
       item.notes = item.notes ? `${item.notes}\n${v}` : v;
       break;
@@ -345,7 +377,10 @@ function applyKV(item: ParsedItem, kv: KV, consultedAt: Date) {
 
 /** Interpreta una línea de oferta sin etiquetas: "Nike Air Force 1 blancas 38 al 43 $62.000". */
 function parseFreeLine(line: string, item: ParsedItem) {
-  let text = stripDecorations(line);
+  // Fotos sueltas en la línea ("... $62.000 foto: af1.jpg" o solo "af1.jpg").
+  const files = extractFilenames(line);
+  for (const f of files) if (!item.photos.includes(f)) item.photos.push(f);
+  let text = stripDecorations(line.replace(FILENAME_RE, " ").replace(/\b(fotos?|imagen(es)?|archivos?)\s*:?\s*$/i, " "));
   // Precio: solo se reconoce con "$" para no confundir con talles o números del modelo.
   const pr = parsePrices(text, true);
   item.warnings.push(...pr.warnings);
@@ -469,7 +504,10 @@ export function parseSupplierMessage(rawText: string, consultedAt: Date = new Da
         const item = emptyItem(gi === 0 ? block : group.map((k) => `${k.field}: ${k.value}`).join("\n"));
         for (const kv of group) applyKV(item, kv, consultedAt);
         if (gi === 0 && leadingLines.length) {
-          const candidates = leadingLines.filter((l) => !isHeaderLine(l));
+          for (const l of leadingLines) for (const f of extractFilenames(l)) if (!item.photos.includes(f)) item.photos.push(f);
+          const candidates = leadingLines
+            .map((l) => l.replace(FILENAME_RE, " ").trim())
+            .filter((l) => l && !isHeaderLine(l));
           result.ignoredLines.push(...leadingLines.filter((l) => isHeaderLine(l)));
           if (!item.model && candidates.length === 1) {
             // Ej.: "Nike Air Force 1 blancas" sobre "Talles: 38 al 43".
@@ -496,11 +534,20 @@ export function parseSupplierMessage(rawText: string, consultedAt: Date = new Da
     // Bloque sin etiquetas: cada línea con precio en "$" es un producto.
     const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
     const productLines = lines.filter((l) => /\$\s*\d/.test(l));
-    if (productLines.length === 0) {
-      result.ignoredLines.push(...lines);
-      continue;
-    }
+    const onlyFilenames = (l: string) => extractFilenames(l).length > 0 && !l.replace(FILENAME_RE, "").replace(/\b(fotos?|imagen(es)?|archivos?)\b|[\s,:;\-–•*]/gi, "");
+    let blockItem: ParsedItem | null = null;
     for (const line of lines) {
+      if (onlyFilenames(line)) {
+        // Fotos en su propia línea: se asignan al producto anterior (de este bloque o del bloque previo).
+        const target = blockItem ?? result.items.at(-1) ?? null;
+        if (target) {
+          for (const f of extractFilenames(line)) if (!target.photos.includes(f)) target.photos.push(f);
+          if (!blockItem) target.warnings.push(`Foto(s) ${extractFilenames(line).join(", ")} asignadas a este producto por estar a continuación: verificar.`);
+        } else {
+          result.ignoredLines.push(line);
+        }
+        continue;
+      }
       if (!productLines.includes(line)) {
         result.ignoredLines.push(line);
         continue;
@@ -508,6 +555,7 @@ export function parseSupplierMessage(rawText: string, consultedAt: Date = new Da
       const item = emptyItem(line);
       parseFreeLine(line, item);
       result.items.push(finalize(item));
+      blockItem = item;
     }
   }
 

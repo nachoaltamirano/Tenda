@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["sharp", "bcryptjs"],
   experimental: {
-    serverActions: { bodySizeLimit: "15mb" },
+    serverActions: { bodySizeLimit: "80mb" },
   },
 };
 

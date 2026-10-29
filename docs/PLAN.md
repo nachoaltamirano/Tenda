@@ -26,6 +26,7 @@ Leyenda: ✅ terminado y probado · 🟡 parcial · ⬜ pendiente
 | Fotos: varias, orden, portada, fuente, autorización, original privado, baja lógica | ✅ | prueba en navegador |
 | Reglas de publicación (datos completos, foto autorizada, margen) | ✅ | `products.test.ts` |
 | Panel: listado con filtros, ficha, precios pendientes, importación, configuración | ✅ | build + recorrido con Playwright |
+| Fotos subidas con el mensaje y asignadas por nombre de archivo (sin duplicados, autorización explícita) | ✅ | `import-photos.test.ts`, `parser.test.ts`, `photo-matching.test.ts` + navegador |
 | Ajustar el intérprete con mensajes reales del grupo | ⬜ | requiere ejemplos reales |
 | Importación de listas en archivo (CSV/Excel) | ⬜ | si el proveedor envía listas |
 | Comparación masiva de una lista completa contra el catálogo | ⬜ | hoy se revisa ítem por ítem |

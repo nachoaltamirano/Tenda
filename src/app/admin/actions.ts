@@ -273,6 +273,7 @@ export async function createMessageAction(_prev: State, fd: FormData): Promise<S
   const r = await runAction(async () => {
     const consultedAt = date(fd, "consultedAt");
     if (!consultedAt) throw new BusinessError("Indicá la fecha de consulta.");
+    const files = fd.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
     return createSupplierMessage(
       {
         supplierId: reqStr(fd, "supplierId"),
@@ -283,6 +284,7 @@ export async function createMessageAction(_prev: State, fd: FormData): Promise<S
         isTestData: bool(fd, "isTestData"),
       },
       session,
+      await Promise.all(files.map(async (f) => ({ filename: f.name, mimeType: f.type, data: Buffer.from(await f.arrayBuffer()) }))),
     );
   });
   if (!r.ok) return r;
@@ -312,6 +314,8 @@ export async function applyItemAction(_prev: State, fd: FormData): Promise<State
         notes: str(fd, "notes"),
         confirmDuplicate: bool(fd, "confirmDuplicate"),
         confirmAllCombinations: bool(fd, "confirmAllCombinations"),
+        attachmentIds: fd.getAll("attachmentIds").map(String),
+        authorizePhotos: bool(fd, "authorizePhotos"),
       },
       session,
     );
@@ -325,7 +329,8 @@ export async function applyItemAction(_prev: State, fd: FormData): Promise<State
         : r.data.priceOutcome === "confirmed"
           ? "Aplicado. El costo coincide con el vigente: se renovó la fecha de consulta."
           : "Aplicado.";
-    return { ...r, message: msg };
+    const photos = r.data.photos ? ` Se vincularon ${r.data.photos} foto(s).` : "";
+    return { ...r, message: msg + photos };
   }
   return r;
 }

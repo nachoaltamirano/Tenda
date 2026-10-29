@@ -51,8 +51,15 @@ export default async function ImportPage() {
               <Field label="Fecha del mensaje" hint="Cuándo lo envió el proveedor, si la sabés">
                 <input type="datetime-local" name="receivedAt" />
               </Field>
-              <Field label="Mensaje *" wide hint={'Ej.: "Modelo: … Color: negro. Talles: 39, 40, 41 y 42. Precio: 45000. Despacho: jueves." o una lista de ofertas con precio en $.'}>
+              <Field label="Mensaje *" wide hint={'Ej.: "Modelo: … Color: negro. Talles: 39, 40, 41 y 42. Precio: 45000. Despacho: jueves. Foto: IMG-20261029-WA0012.jpg" o una lista de ofertas con precio en $.'}>
                 <textarea name="rawText" required rows={10} />
+              </Field>
+              <Field
+                label="Fotos del mensaje"
+                wide
+                hint={'Opcional. Para asignarlas automáticamente, escribí el nombre del archivo en el mensaje (ej. "Foto: IMG-20261029-WA0012.jpg"). Las que no se mencionen se pueden asignar a mano al revisar. JPG, PNG o WEBP; hasta 40.'}
+              >
+                <input type="file" name="photos" multiple accept="image/jpeg,image/png,image/webp" />
               </Field>
             </div>
             <Check name="isTestData" label="Es un mensaje de prueba" />

@@ -14,13 +14,14 @@ export const metadata = { title: "Revisar mensaje" };
 
 const FIELD_LABELS: Record<string, string> = {
   brand: "marca", model: "modelo", colors: "color", sizes: "talles", price: "precio", supplierSku: "SKU", dispatch: "despacho", stock: "stock", notes: "notas",
+  photos: "fotos",
 };
 
 export default async function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const review = await getMessageForReview(id);
   if (!review) notFound();
-  const { message: m, parsed, items } = review;
+  const { message: m, parsed, items, unassigned } = review;
   const allProducts = await db.product.findMany({ orderBy: [{ brand: "asc" }, { model: "asc" }], select: { id: true, brand: true, model: true, internalSku: true } });
   const closed = m.status === "DISCARDED";
 
@@ -48,7 +49,21 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         )}
       </Card>
 
-      {items.map(({ index, item, applied, matches }) => {
+      {m.attachments.length > 0 && (
+        <Card title={`Fotos subidas con el mensaje (${m.attachments.length})`}>
+          <div className="thumbs">
+            {m.attachments.map((a) => (
+              <div key={a.id} className="thumb">
+                <img src={`/media/${a.thumbKey}`} alt={a.filename} />
+                <small>{a.filename}</small>{" "}
+                {a.images.length > 0 ? <Badge tone="ok">vinculada</Badge> : unassigned.some((u) => u.id === a.id) ? <Badge tone="warn">sin mencionar</Badge> : null}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {items.map(({ index, item, applied, matches, photos }) => {
         const best = matches[0];
         const defaultAction = best?.kind === "exact" ? "update" : "create";
         return (
@@ -63,6 +78,9 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
               <Notice tone="error">Requiere aclaración:<ul>{item.clarifications.map((c) => <li key={c}>{c}</li>)}</ul></Notice>
             )}
             {item.warnings.length > 0 && <Notice tone="warn"><ul>{item.warnings.map((w) => <li key={w}>{w}</li>)}</ul></Notice>}
+            {photos.missing.length > 0 && (
+              <Notice tone="warn">El mensaje menciona {photos.missing.join(", ")} pero no se subió ningún archivo con ese nombre.</Notice>
+            )}
             {item.dispatch && (
               <p><small>Despacho informado: “{item.dispatch.text}” → {item.dispatch.date ?? (item.dispatch.weekday !== null ? WEEKDAY_NAMES[item.dispatch.weekday] : "sin día reconocido")} (estimado, no confirmado)</small></p>
             )}
@@ -74,7 +92,8 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
             )}
             {applied ? (
               <p>Aplicado el {formatDateTime(applied.at)} → <Link href={`/admin/productos/${applied.productId}`}>ver producto</Link>
-                {applied.price === "proposal" && <> · cambio de precio <Link href="/admin/precios">pendiente de aprobación</Link></>}</p>
+                {applied.price === "proposal" && <> · cambio de precio <Link href="/admin/precios">pendiente de aprobación</Link></>}
+                {applied.photos ? <> · {applied.photos} foto(s) vinculada(s)</> : null}</p>
             ) : closed ? null : (
               <ActionForm action={applyItemAction}>
                 <input type="hidden" name="messageId" value={m.id} />
@@ -116,6 +135,31 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
                   <Field label="Fecha de despacho"><input type="date" name="nextDispatchDate" defaultValue={item.dispatch?.date ? dateInputValue(`${item.dispatch.date}T12:00:00-03:00`) : ""} /></Field>
                   <Field label="Notas" wide><input name="notes" defaultValue={[item.stockNote && `Stock: ${item.stockNote}`, item.notes].filter(Boolean).join(" · ")} /></Field>
                 </div>
+                {(photos.matched.length > 0 || unassigned.length > 0) && (
+                  <fieldset style={{ marginTop: ".75rem" }}>
+                    <legend>Fotos para este producto</legend>
+                    <div className="thumbs">
+                      {photos.matched.map((ph, i) => {
+                        const a = m.attachments.find((x) => x.id === ph.attachmentId)!;
+                        return (
+                          <label key={a.id} className="thumb">
+                            <img src={`/media/${a.thumbKey}`} alt={a.filename} />
+                            <span className="check"><input type="checkbox" name="attachmentIds" value={a.id} defaultChecked /> {a.filename}</span>
+                            {i === 0 && <Badge tone="ok">portada</Badge>} {!ph.exact && <Badge tone="warn">mencionada como {ph.name}</Badge>}
+                          </label>
+                        );
+                      })}
+                      {unassigned.map((a) => (
+                        <label key={a.id} className="thumb">
+                          <img src={`/media/${a.thumbKey}`} alt={a.filename} />
+                          <span className="check"><input type="checkbox" name="attachmentIds" value={a.id} /> {a.filename}</span>
+                          <Badge>sin mencionar</Badge>
+                        </label>
+                      ))}
+                    </div>
+                    <Check name="authorizePhotos" label="El proveedor autoriza publicar estas fotos (si no se marca, quedan cargadas pero no se publican)" />
+                  </fieldset>
+                )}
                 {item.price !== null && <p className="field-hint">Precio detectado: {formatMoney(item.price, item.currency ?? "ARS")}. Si el producto ya existe con otro costo, se crea una propuesta para aprobar.</p>}
                 <Check name="confirmAllCombinations" label="Con varios colores: confirmo que todos los talles existen en todos los colores" />
                 <Check name="confirmDuplicate" label="Al crear: confirmo que es un producto distinto de los parecidos" />

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { ImageSourceType } from "@prisma/client";
 import { audit } from "../audit";
@@ -7,7 +7,7 @@ import { BusinessError } from "../errors";
 import { getStorage } from "../storage";
 import type { Actor } from "./products";
 
-const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/avif"]);
+const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const MAX_BYTES = 12 * 1024 * 1024;
 
 export type ImageUpload = {
@@ -18,40 +18,65 @@ export type ImageUpload = {
   authorizedForPublication: boolean;
 };
 
-export async function addProductImage(productId: string, upload: ImageUpload, actor: Actor) {
-  if (!ALLOWED.has(upload.mimeType)) throw new BusinessError("Formato de imagen no admitido (usar JPG, PNG, WEBP o HEIC).");
-  if (upload.data.length > MAX_BYTES) throw new BusinessError("La imagen supera los 12 MB.");
-  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true } });
-  if (!product) throw new BusinessError("El producto no existe.", "not_found");
+export type StoredImage = {
+  originalKey: string;
+  optimizedKey: string;
+  thumbKey: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  contentHash: string;
+};
 
+/**
+ * Valida una imagen y guarda el original intacto (privado) más una versión
+ * optimizada para la tienda (WEBP 1600px) y una miniatura (WEBP 480px).
+ */
+export async function storeImage(data: Buffer, mimeType: string, folder: string, label = "La imagen"): Promise<StoredImage> {
+  if (mimeType === "image/heic" || mimeType === "image/heif") {
+    throw new BusinessError(`${label} está en formato HEIC, que no se puede procesar. Usá la foto descargada de WhatsApp (JPG) o configurá el iPhone en Cámara → Formatos → Más compatible.`);
+  }
+  if (!ALLOWED.has(mimeType)) throw new BusinessError(`${label}: formato no admitido (usar JPG, PNG o WEBP).`);
+  if (data.length > MAX_BYTES) throw new BusinessError(`${label} supera los 12 MB.`);
   let meta: sharp.Metadata;
   try {
-    meta = await sharp(upload.data).metadata();
+    meta = await sharp(data).metadata();
   } catch {
-    throw new BusinessError("El archivo no es una imagen válida.");
+    throw new BusinessError(`${label} no es una imagen válida.`);
   }
-  const id = randomUUID();
-  const ext = upload.mimeType.split("/")[1].replace("jpeg", "jpg");
-  const base = `products/${productId}/${id}`;
+  const ext = mimeType.split("/")[1].replace("jpeg", "jpg");
+  const base = `${folder}/${randomUUID()}`;
   const storage = getStorage();
-  // Original intacto (privado) + versiones optimizadas para la tienda.
-  await storage.put(`${base}/original.${ext}`, upload.data);
-  const optimized = await sharp(upload.data).rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
-  const thumb = await sharp(upload.data).rotate().resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true }).webp({ quality: 75 }).toBuffer();
-  await storage.put(`${base}/optimized.webp`, optimized);
-  await storage.put(`${base}/thumb.webp`, thumb);
+  const optimized = await sharp(data).rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+  const thumb = await sharp(data).rotate().resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true }).webp({ quality: 75 }).toBuffer();
+  const stored: StoredImage = {
+    originalKey: `${base}/original.${ext}`,
+    optimizedKey: `${base}/optimized.webp`,
+    thumbKey: `${base}/thumb.webp`,
+    mimeType,
+    width: meta.width ?? null,
+    height: meta.height ?? null,
+    contentHash: createHash("sha256").update(data).digest("hex"),
+  };
+  await storage.put(stored.originalKey, data);
+  await storage.put(stored.optimizedKey, optimized);
+  await storage.put(stored.thumbKey, thumb);
+  return stored;
+}
+
+export async function addProductImage(productId: string, upload: ImageUpload, actor: Actor) {
+  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true } });
+  if (!product) throw new BusinessError("El producto no existe.", "not_found");
+  const stored = await storeImage(upload.data, upload.mimeType, `products/${productId}`);
+  const same = await db.productImage.findFirst({ where: { productId, contentHash: stored.contentHash, deletedAt: null } });
+  if (same) throw new BusinessError("Esa foto ya está cargada en este producto.", "duplicate_image");
 
   return db.$transaction(async (tx) => {
     const count = await tx.productImage.count({ where: { productId, deletedAt: null } });
     const img = await tx.productImage.create({
       data: {
         productId,
-        originalKey: `${base}/original.${ext}`,
-        optimizedKey: `${base}/optimized.webp`,
-        thumbKey: `${base}/thumb.webp`,
-        mimeType: upload.mimeType,
-        width: meta.width ?? null,
-        height: meta.height ?? null,
+        ...stored,
         sourceType: upload.sourceType,
         sourceNote: upload.sourceNote,
         authorizedForPublication: upload.authorizedForPublication,

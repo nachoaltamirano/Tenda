@@ -98,3 +98,39 @@ describe("talles", () => {
     expect(parseSizes("S M L").ok).toBe(false);
   });
 });
+
+describe("fotos por nombre de archivo", () => {
+  it("con etiqueta Foto/Fotos, en el orden indicado", () => {
+    const r = parseSupplierMessage("Modelo: Nike Air Max 90\nColor: negro\nTalles: 40 41\nPrecio: 45000\nFotos: IMG-20261029-WA0012.jpg, IMG-20261029-WA0013.jpg", consultedAt);
+    expect(r.items[0].photos).toEqual(["IMG-20261029-WA0012.jpg", "IMG-20261029-WA0013.jpg"]);
+    expect(r.items[0].price).toBe(4_500_000);
+  });
+
+  it("en una sola línea con el formato del enunciado", () => {
+    const it0 = parseSupplierMessage("Modelo: X. Color: negro. Talles: 39 y 40. Precio: 45000. Foto: x_negra.jpg", consultedAt).items[0];
+    expect(it0.photos).toEqual(["x_negra.jpg"]);
+    expect(it0.sizes).toEqual(["39", "40"]);
+  });
+
+  it("un archivo en una línea sin etiqueta no se mezcla con el precio", () => {
+    const it0 = parseSupplierMessage("Modelo: Puma Suede\nPrecio: 52000\naf1.jpg", consultedAt).items[0];
+    expect(it0.price).toBe(5_200_000);
+    expect(it0.photos).toEqual(["af1.jpg"]);
+    expect(it0.clarifications).toEqual([]);
+  });
+
+  it("en listas de ofertas: al final de la línea o en la línea siguiente", () => {
+    const r = parseSupplierMessage(
+      "OFERTAS STOCK\n• Nike Air Force 1 blancas 38 al 43 $62.000 af1.jpg\n• Adidas Campus 00s gris 40 41 42 $70.000\ncampus1.jpg campus2.png",
+      consultedAt,
+    );
+    expect(r.items[0]).toMatchObject({ brand: "Nike", model: "Air Force 1", photos: ["af1.jpg"], price: 6_200_000 });
+    expect(r.items[0].sizes).toEqual(["38", "39", "40", "41", "42", "43"]);
+    expect(r.items[1].photos).toEqual(["campus1.jpg", "campus2.png"]);
+    expect(r.items[1].sizes).toEqual(["40", "41", "42"]);
+  });
+
+  it("pide aclaración si la etiqueta Foto no tiene un archivo", () => {
+    expect(parseSupplierMessage("Modelo: X\nFoto: la de ayer", consultedAt).items[0].clarifications.join(" ")).toMatch(/nombre de archivo/);
+  });
+});

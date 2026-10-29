@@ -97,10 +97,34 @@ model SupplierMessage {
   isTestData   Boolean               @default(false)
   createdAt    DateTime              @default(now())
 
+  attachments    SupplierMessageAttachment[]
   costEntries    ProductCostHistory[]
   priceProposals PriceChangeProposal[]
 
   @@index([consultedAt])
+}
+
+// Foto subida junto con un mensaje del proveedor. Se asigna a un producto
+// por nombre de archivo al revisar el mensaje. Los archivos no se duplican:
+// la imagen del producto apunta a las mismas claves.
+model SupplierMessageAttachment {
+  id           String          @id @default(cuid())
+  messageId    String
+  message      SupplierMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  filename     String
+  filenameKey  String // minúsculas, para buscar por nombre
+  originalKey  String
+  optimizedKey String
+  thumbKey     String
+  mimeType     String
+  width        Int?
+  height       Int?
+  sizeBytes    Int
+  contentHash  String // SHA-256 del archivo original
+  createdAt    DateTime        @default(now())
+  images       ProductImage[]
+
+  @@unique([messageId, filenameKey])
 }
 
 // ---------------------------------------------------------------------------
@@ -208,9 +232,9 @@ enum ImageSourceType {
 // Las imágenes no se borran físicamente: se marcan con deletedAt para no
 // romper pedidos ni publicaciones que las referencian.
 model ProductImage {
-  id                       String          @id @default(cuid())
+  id                       String                     @id @default(cuid())
   productId                String
-  product                  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product                  Product                    @relation(fields: [productId], references: [id], onDelete: Cascade)
   originalKey              String
   optimizedKey             String?
   thumbKey                 String?
@@ -219,11 +243,14 @@ model ProductImage {
   height                   Int?
   sourceType               ImageSourceType
   sourceNote               String?
-  authorizedForPublication Boolean         @default(false)
-  position                 Int             @default(0)
-  isCover                  Boolean         @default(false)
+  authorizedForPublication Boolean                    @default(false)
+  position                 Int                        @default(0)
+  isCover                  Boolean                    @default(false)
+  attachmentId             String?
+  contentHash              String? // SHA-256 del original, para no repetir la misma foto
+  attachment               SupplierMessageAttachment? @relation(fields: [attachmentId], references: [id])
   deletedAt                DateTime?
-  createdAt                DateTime        @default(now())
+  createdAt                DateTime                   @default(now())
 
   @@index([productId, position])
 }

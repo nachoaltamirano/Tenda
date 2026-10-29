@@ -146,6 +146,10 @@ export const reviewedItemInput = z.object({
   confirmDuplicate: z.boolean().default(false),
   /** Con más de un color, confirmar que todos los talles existen en todos los colores. */
   confirmAllCombinations: z.boolean().default(false),
+  /** Fotos del mensaje a vincular, en orden (la primera es portada si el producto no tiene). */
+  attachmentIds: z.array(z.string().min(1)).max(30).default([]),
+  /** Declaración del administrador: las fotos están autorizadas para publicarse. */
+  authorizePhotos: z.boolean().default(false),
 });
 export type ReviewedItemInput = z.input<typeof reviewedItemInput>;
 
