@@ -41,7 +41,7 @@ La app accede a la base solo desde el servidor. La migración `supabase_lockdown
 `anon` y `authenticated`, para que la API pública de Supabase no exponga ninguna tabla. El espacio de fotos es privado:
 las imágenes se entregan a través de la app, que controla qué se puede ver.
 
-## 3. Dominio propio (cuando lo tengas)
+## Dominio propio (cuando lo tengas)
 
 Vercel → proyecto → *Settings → Domains* → agregar el dominio y cargar en el registrador (por ejemplo NIC Argentina)
 los registros DNS que indique Vercel. Actualizar `PUBLIC_SITE_URL`.
